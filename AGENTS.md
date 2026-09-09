@@ -6,12 +6,12 @@ compiler for PyTorch extensions, CUDA Toolkit 12.4 for COLMAP, PyTorch
 2.3.1+cu121, and COLMAP 3.12.6 with CUDA enabled.
 
 Python packages are managed by uv. NVIDIA drivers, the CUDA Toolkit, COLMAP,
-Faceform Wrap, FFmpeg, Xvfb, model weights, and licensed assets are system or
-operator-managed dependencies and must not be added to the uv environment.
+FFmpeg, and model weights are system or operator-managed dependencies and must
+not be added to the uv environment.
 
 Agents must inspect the existing installation before changing system packages.
-Do not reinstall a working NVIDIA driver, reboot the host, or activate/change a
-Faceform license without explicit operator approval.
+Do not reinstall a working NVIDIA driver or reboot the host without explicit
+operator approval.
 
 ## Python dependencies with uv
 
@@ -134,53 +134,20 @@ colmap -h
 ldd "$(command -v colmap)" | grep -E 'cuda|cudart'
 ```
 
-## Faceform Wrap
+## Production external assets
 
-Wrap is proprietary and requires an operator with Faceform download and license
-access. Download the Linux Portable build of Wrap 2025.11.14 from the official
-Faceform customer portal. Extract it so these files exist:
+Faceform Wrap is not required by the production video-to-GLB entry point. The
+production path keeps the largest connected component of `2dgs_recon.obj` in
+its reconstructed coordinates and sends that mesh through deterministic cube UV
+projection and texture optimization. xatlas is not required by the production
+entry point. The upstream registration scripts remain in the repository only as
+a legacy research workflow.
 
-```text
-registration/wrap/Wrap
-registration/wrap/WrapCmd
-registration/wrap/Gallery/
-registration/wrap/lib/
-registration/wrap/plugins/
-```
-
-Install the headless display helper and ensure the executables can run:
-
-```bash
-sudo apt-get install -y xvfb ffmpeg
-cd registration/wrap
-chmod +x Wrap WrapCmd
-./WrapCmd --version
-./WrapCmd --license
-```
-
-Activate a nodelocked or floating license according to the Faceform account.
-For example:
-
-```bash
-./WrapCmd activateNodelocked /secure/path/Faceform_Node_License.lic
-# Or: ./WrapCmd activateFloating LICENSE_SERVER 7308
-```
-
-The production registration stage invokes Wrap headlessly as
-`xvfb-run --auto-servernum ./WrapCmd compute <project.wrap>`. A nonzero exit
-code, especially exit code 3, must fail the worker job rather than publish a
-partial asset.
-
-## External assets
-
-The following licensed or large files are intentionally excluded from Git and
-must be provisioned separately:
+The following large model is intentionally excluded from Git and must be
+provisioned separately:
 
 ```text
 matting/model/foreground-segmentation-model-vitl16_384.onnx
-registration/pretrained/
-registration/align/AlbedoMMFitting/data/FLAME2020/generic_model.pkl
-registration/wrap/
 ```
 
 Official references:
@@ -189,5 +156,3 @@ Official references:
 - https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/ubuntu.html
 - https://docs.nvidia.com/cuda/cuda-installation-guide-linux/
 - https://colmap.github.io/install.html
-- https://faceform.com/download-wrap/
-- https://docs.faceform.com/Wrap/CommandLineInterface/CommandLineInterface.html

@@ -14,10 +14,12 @@ uv run python -m production.run_video_to_glb \
 ```
 
 The production defaults use the full 30,000-iteration 2DGS reconstruction, mesh
-resolution 1024, one retained mesh component, canonical face cleanup, xatlas UVs,
-and 301 texture iterations. Add `--resume` to reuse stages whose configuration and
-recorded outputs still match. Use `--dry-run` to print the complete JSON stage plan
-without touching the filesystem or CUDA.
+resolution 1024, direct largest-component cleanup in reconstructed coordinates,
+20 volume-preserving Laplacian smoothing passes, deterministic cube UVs with
+two-pixel chart padding, and 301 texture iterations. The production entry point
+does not run FLAME registration or Faceform Wrap. Add `--resume` to reuse stages
+whose configuration and recorded outputs still match. Use `--dry-run` to print
+the complete JSON stage plan without touching the filesystem or CUDA.
 
 The required product is the requested GLB. A sibling `result.json` contains its hash,
 size, and quality report. Intermediate geometry, UV files, texture, and diagnostics

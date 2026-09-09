@@ -116,15 +116,6 @@ wheels = [
 ]
 
 [[package]]
-name = "chumpy"
-version = "0.71"
-source = { git = "https://github.com/mattloper/chumpy.git?rev=580566eafc9ac68b2614b64d6f7aaa84eebb70da#580566eafc9ac68b2614b64d6f7aaa84eebb70da" }
-dependencies = [
-    { name = "scipy" },
-    { name = "six" },
-]
-
-[[package]]
 name = "click"
 version = "8.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -254,25 +245,6 @@ wheels = [
 ]
 
 [[package]]
-name = "face-alignment"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "packaging" },
-    { name = "scikit-image" },
-    { name = "scipy" },
-    { name = "torch" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/02/17/a03a71f4e5d217b5207390af6ed35fd7d6985b9c3e113ecc41126187d1da/face_alignment-1.5.0.tar.gz", hash = "sha256:d11583b54d4addeee1e16281a869a24bcac5a77b77377799234c87195c2f705c", size = 40203, upload-time = "2026-04-06T20:47:00.93Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/90/31d5bdd4e427619cd159cc12c2b49ce137fbc5a3ac0914e2026fcb5bddb4/face_alignment-1.5.0-py3-none-any.whl", hash = "sha256:41661595c8271ffe7f99b80ee0cd19eb1490a1d6d2ffc5556e02cd3d6868c918", size = 45126, upload-time = "2026-04-06T20:46:59.613Z" },
-]
-
-[[package]]
 name = "fastjsonschema"
 version = "2.22.2"
 source = { registry = "https://pypi.org/simple" }
@@ -355,28 +327,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/3f/2c29224acb2e2df4d2046e4c73ee2662023c58ff5b113c4c1adac0886c43/humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc", size = 360702, upload-time = "2021-09-17T21:40:43.31Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/0f/310fb31e39e2d734ccaa2c0fb981ee41f7bd5056ce9bc29b2248bd569169/humanfriendly-10.0-py2.py3-none-any.whl", hash = "sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477", size = 86794, upload-time = "2021-09-17T21:40:39.897Z" },
-]
-
-[[package]]
-name = "ibug-face-alignment"
-version = "0.1.0"
-source = { git = "https://github.com/hhj1897/face_alignment.git?rev=9cf5494e443f26d567972f3f50f6212d65b76c01#9cf5494e443f26d567972f3f50f6212d65b76c01" }
-dependencies = [
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "torch" },
-]
-
-[[package]]
-name = "ibug-face-detection"
-version = "0.1.0"
-source = { git = "https://github.com/hhj1897/face_detection.git?lfs=true&rev=db2a4e8eae8c9c53385ff0773e9db08f03cf21ad#db2a4e8eae8c9c53385ff0773e9db08f03cf21ad" }
-dependencies = [
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "scipy" },
-    { name = "torch" },
-    { name = "torchvision" },
 ]
 
 [[package]]
@@ -613,15 +563,6 @@ wheels = [
 ]
 
 [[package]]
-name = "llvmlite"
-version = "0.49.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/43/27/72ae94ea5c8f7349ec1c229d4cd058feb799cbd0833ad6d1b47c919b37b7/llvmlite-0.49.0.tar.gz", hash = "sha256:00f16db782f4a13c78c5804aedc434e46794a77e89999a168f9401106270e50a", size = 194467, upload-time = "2026-08-11T16:26:00.489Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/2c/eb42378b4f3afc71f9fe172d01f30135dc1d54c7fd95cf76d5445d6f7809/llvmlite-0.49.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:854941c2267fd4fc5b2ce02b8af8ecdffa79fb7784591d3a89370322039ea09f", size = 59890659, upload-time = "2026-08-11T16:23:03.359Z" },
-]
-
-[[package]]
 name = "lpips"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -795,19 +736,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/ac/92/410b7917d16ab54c0
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6e/53/ebfed7b689c338dd8ebeec9c0730c8d56821292f14e2536e5f3ef1a05744/ninja-1.13.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:65a24341b5ac09fcadcc37082660be40a94174e51a937fabf6e2cae26225fa2c", size = 183365, upload-time = "2026-08-30T15:49:34.53Z" },
     { url = "https://files.pythonhosted.org/packages/f5/5f/c511f2952f94ab2966d60edd9c34e744ea32f2724b1184b62270bde55b3a/ninja-1.13.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:915bd482c4be41c75120fd67a22e0bb3f0fbb3bbc5f95b89787deadd59e27ef2", size = 544460, upload-time = "2026-08-30T15:49:46.29Z" },
-]
-
-[[package]]
-name = "numba"
-version = "0.67.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "llvmlite" },
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/7a/90/2544f4e3a61e501d6c9a5418fd4b905323222693d54a02cab0106a0af865/numba-0.67.0.tar.gz", hash = "sha256:cd75aa535b33fa05d9d930b1ae8af9f97a2881e96d72dfb38ec9b78284d9f851", size = 2836515, upload-time = "2026-08-11T23:04:00.174Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/17/5358f24235ef1a5a80b7e28f3e1baa886c0bcf07dc68557009284e6ba698/numba-0.67.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:d6c8e9ba3f9602471e8c6f563ffcce8db8046741f0bafb782a052e41dc6b6861", size = 3821881, upload-time = "2026-08-11T23:03:11.172Z" },
 ]
 
 [[package]]
@@ -1218,17 +1146,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pymeshlab"
-version = "2025.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/d7/616aecef93cbe8b140b2264981370d94c7f408e4cb85a59992e262bb864e/pymeshlab-2025.7-cp310-cp310-manylinux_2_35_x86_64.whl", hash = "sha256:1f4ac7fac0f0b39903c8bbdb2c9e6519bb625fbc20899c795561c8ab0393493e", size = 105816909, upload-time = "2025-09-09T07:19:34.182Z" },
-]
-
-[[package]]
 name = "pyparsing"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1476,11 +1393,7 @@ name = "stfr-production"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "chumpy" },
     { name = "diff-surfel-rasterization" },
-    { name = "face-alignment" },
-    { name = "ibug-face-alignment" },
-    { name = "ibug-face-detection" },
     { name = "iopath" },
     { name = "jax" },
     { name = "jaxlib" },
@@ -1500,7 +1413,6 @@ dependencies = [
     { name = "pip" },
     { name = "plyfile" },
     { name = "protobuf" },
-    { name = "pymeshlab" },
     { name = "pytorch3d" },
     { name = "pyyaml" },
     { name = "scikit-image" },
@@ -1514,7 +1426,6 @@ dependencies = [
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "wheel" },
-    { name = "xatlas" },
     { name = "yacs" },
 ]
 
@@ -1526,11 +1437,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chumpy", git = "https://github.com/mattloper/chumpy.git?rev=580566eafc9ac68b2614b64d6f7aaa84eebb70da" },
     { name = "diff-surfel-rasterization", git = "https://github.com/hbb1/diff-surfel-rasterization.git?rev=e0ed0207b3e0669960cfad70852200a4a5847f61" },
-    { name = "face-alignment", specifier = "==1.5.0" },
-    { name = "ibug-face-alignment", git = "https://github.com/hhj1897/face_alignment.git?rev=9cf5494e443f26d567972f3f50f6212d65b76c01" },
-    { name = "ibug-face-detection", git = "https://github.com/hhj1897/face_detection.git?lfs=true&rev=db2a4e8eae8c9c53385ff0773e9db08f03cf21ad" },
     { name = "iopath", specifier = "==0.1.10" },
     { name = "jax", specifier = "==0.4.20" },
     { name = "jaxlib", specifier = "==0.4.20" },
@@ -1550,7 +1457,6 @@ requires-dist = [
     { name = "pip", specifier = "==25.3" },
     { name = "plyfile", specifier = "==1.1.3" },
     { name = "protobuf", specifier = "==3.20.3" },
-    { name = "pymeshlab", specifier = "==2025.7" },
     { name = "pytorch3d", url = "https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt231/pytorch3d-0.7.8-cp310-cp310-linux_x86_64.whl" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "scikit-image", specifier = "==0.25.2" },
@@ -1564,7 +1470,6 @@ requires-dist = [
     { name = "tqdm", specifier = "==4.70.0" },
     { name = "trimesh", specifier = "==5.1.0" },
     { name = "wheel", specifier = "==0.48.0" },
-    { name = "xatlas", specifier = "==0.0.11" },
     { name = "yacs", specifier = "==0.1.8" },
 ]
 
@@ -1836,17 +1741,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d0/20/50ed6bdf27dec98b568a8ae25dc599f35baa3d9709f9e83fd1edb56b9a90/wheel-0.48.0.tar.gz", hash = "sha256:94800765601e9171bf5d58d066e640662842bcedcbab982b2c90787a2c987322", size = 66471, upload-time = "2026-08-11T22:02:27.327Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2e/29/69cfbb602cd91690c55d38ba9fe53e6a7e76a6fa647bf38f19c138d25449/wheel-0.48.0-py3-none-any.whl", hash = "sha256:3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab", size = 33320, upload-time = "2026-08-11T22:02:26.1Z" },
-]
-
-[[package]]
-name = "xatlas"
-version = "0.0.11"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7c/fe/32adb4dbdf5485c185de9b62b83d434f12ca5be8a000d9882c871808987b/xatlas-0.0.11.tar.gz", hash = "sha256:72f0bc6c42c19252be87e947d9dfe251c8d6c6943fd43e3d173ddc6b1afad693", size = 7718208, upload-time = "2025-07-04T16:46:43.315Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/6b/faefe42f007abc2e3ea94d16e74577837106842711fddd2c1dce0a26af6b/xatlas-0.0.11-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dc1eefc14b69bf9ae4a529809cf9ceca50c45b87f2fff5220a80291b3ff2e3f0", size = 261604, upload-time = "2025-07-04T16:45:25.109Z" },
-    { url = "https://files.pythonhosted.org/packages/45/6f/1744898c8096fd1c91950e8b5d19244d88acb92dbaa9d4d579e9ea304518/xatlas-0.0.11-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:f7643d17f9c75f37a82c497e94ee280455a7e72246da600ac30df8abc69dc774", size = 1287993, upload-time = "2025-07-04T16:45:27.683Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/24/cafe4af289301c84e194165bb4ae10014cc40fca2430ef2987bff968d169/xatlas-0.0.11-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c6ac223ffc49167b553ff7e81af7b8b5a14a73d5b9e98789821511483b4cdee9", size = 262002, upload-time = "2025-07-04T16:46:21.107Z" },
 ]
 
 [[package]]
