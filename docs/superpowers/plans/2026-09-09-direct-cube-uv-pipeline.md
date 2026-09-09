@@ -29,11 +29,11 @@
 - `production/unwrap_2dgs_uv.py`: cube chart assignment, seam remap, padded atlas projection, OBJ/MTL serialization, CLI, and UV report.
 - `production/tests/test_unwrap_2dgs_uv.py`: cube topology, deterministic mapping, padding, invalid input, and material tests.
 - `production/texture_stage.py`: production atlas configuration and handoff to the unwrap function.
-- `production/run_video_to_glb.py`: mesh fingerprint in resume configuration and atlas-aware final validation.
+- `production/run_video_to_glb.py`: content fingerprints between stages and atlas-aware final validation.
 - `production/tests/test_texture_stage.py`: atlas configuration validation and forwarding contract.
 - `production/tests/test_run_video_to_glb.py`: source-mesh fingerprint behavior and unchanged stage graph.
 - `production/validate_asset.py`: independent cube tile-padding validation in the final publication gate.
-- `production/export_glb.py`: direct-output terminology and identity transform report key used by its CLI.
+- `production/export_glb.py`: direct-output terminology and Y-up transform report key used by its CLI.
 - `production/tests/test_validate_asset.py`: accepted padded UVs and rejection of tile-edge UVs.
 - `production/tests/test_export_glb.py`: direct transform report compatibility.
 - `pyproject.toml`, `uv.lock`, `production/tests/test_pyproject.py`: remove the xatlas production dependency and lock entry.
@@ -60,7 +60,7 @@ git diff -- production/clean_face_mesh.py production/reconstruction_stage.py pro
 git diff --cached -- production/clean_face_mesh.py production/reconstruction_stage.py production/tests/test_clean_face_mesh.py production/tests/test_reconstruction_stage.py
 ```
 
-Expected: reconstruction retains `refinement` for sharp-frame selection and removes only registration; cleanup has no Wrap/reference input, keeps the largest component, applies 20 Laplacian passes, and returns an identity `source_to_output_row_matrix`.
+Expected: reconstruction retains `refinement` for sharp-frame selection and removes only registration; cleanup has no Wrap/reference input, keeps the largest component, applies 20 Laplacian passes, and returns the proper Z-rotation `source_to_output_row_matrix` needed for glTF Y-up export.
 
 - [ ] **Step 2: Synchronize these four files and re-run the verified tests on the server**
 
@@ -783,7 +783,7 @@ def load_output_transform(report_path: Path) -> np.ndarray:
     return np.asarray(cleanup["source_to_output_row_matrix"], dtype=np.float64)
 ```
 
-Change `main()` to pass `load_output_transform(args.clean_report)` and change CLI/user-facing messages from "canonical" to "output" or "direct". Keep `export_canonical_asset` as a compatibility function name because the orchestrator and existing callers already import it; its matrix is the identity in the direct production route.
+Change `main()` to pass `load_output_transform(args.clean_report)` and change CLI/user-facing messages from "canonical" to "output" or "direct". Keep `export_canonical_asset` as a compatibility function name because the orchestrator and existing callers already import it; the direct production route uses a proper 180-degree Z rotation to publish a Y-up asset.
 
 - [ ] **Step 6: Run export, validation, and orchestrator tests**
 

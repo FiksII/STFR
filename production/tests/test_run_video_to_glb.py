@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import numpy as np
+
+import production.run_video_to_glb as pipeline
 from production.run_video_to_glb import (
     PIPELINE_STAGES,
     build_texture_resume_config,
@@ -99,4 +102,38 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
     assert first["uv_method"] == second["uv_method"] == "cube"
     assert first["atlas_size"] == second["atlas_size"] == 1024
     assert first["uv_padding_pixels"] == second["uv_padding_pixels"] == 2
+    assert first["lpips_max_size"] == second["lpips_max_size"] == 512
     assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
+
+
+def test_asset_export_fingerprint_tracks_same_size_texture_changes(
+    tmp_path: Path,
+) -> None:
+    obj = tmp_path / "face.obj"
+    mtl = tmp_path / "face.mtl"
+    texture = tmp_path / "uv.png"
+    obj.write_bytes(b"obj1")
+    mtl.write_bytes(b"mtl1")
+    texture.write_bytes(b"aaaa")
+    report = {"obj": str(obj), "mtl": str(mtl), "texture": str(texture)}
+
+    first = pipeline.build_asset_export_resume_config(report, np.eye(4))
+    texture.write_bytes(b"bbbb")
+    second = pipeline.build_asset_export_resume_config(report, np.eye(4))
+
+    assert first["texture_sha256"] != second["texture_sha256"]
+
+
+def test_validation_fingerprint_tracks_same_size_staged_glb_changes(
+    tmp_path: Path,
+) -> None:
+    clean_mesh = tmp_path / "face.ply"
+    staged_glb = tmp_path / "face.glb"
+    clean_mesh.write_bytes(b"mesh")
+    staged_glb.write_bytes(b"aaaa")
+
+    first = pipeline.build_validation_resume_config(clean_mesh, staged_glb, 1024, 2)
+    staged_glb.write_bytes(b"bbbb")
+    second = pipeline.build_validation_resume_config(clean_mesh, staged_glb, 1024, 2)
+
+    assert first["staged_glb_sha256"] != second["staged_glb_sha256"]

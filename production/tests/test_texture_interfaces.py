@@ -25,6 +25,7 @@ def test_texture_scripts_accept_explicit_mesh_and_iterations() -> None:
     assert argument_default(PROJECT_ROOT / "texture/render_gbuffer.py", "mesh_path") is None
     assert argument_default(PROJECT_ROOT / "texture/build_texture.py", "mesh_path") is None
     assert argument_default(PROJECT_ROOT / "texture/build_texture.py", "iterations") == 301
+    assert argument_default(PROJECT_ROOT / "texture/build_texture.py", "lpips-max-size") == 512
 
 
 def test_texture_builder_preserves_parent_gpu_mapping() -> None:

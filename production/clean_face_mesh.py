@@ -12,12 +12,16 @@ from trimesh.smoothing import filter_laplacian
 from production.unwrap_2dgs_uv import load_triangle_mesh
 
 
+SOURCE_TO_GLTF_Y_UP_ROW_MATRIX = np.diag([-1.0, -1.0, 1.0, 1.0])
+
+
 @dataclass(frozen=True)
 class CleanupConfig:
     smooth_iterations: int = 20
     minimum_faces: int = 1000
     minimum_largest_component_fraction: float = 0.5
     maximum_roughness_p90_degrees: float = 30.0
+    output_orientation: str = "gltf_y_up"
 
     def validate(self) -> None:
         if self.smooth_iterations < 0:
@@ -26,6 +30,8 @@ class CleanupConfig:
             raise ValueError("Minimum face count must be positive")
         if not 0 < self.minimum_largest_component_fraction <= 1:
             raise ValueError("Largest component fraction must be in (0, 1]")
+        if self.output_orientation != "gltf_y_up":
+            raise ValueError("Production STFR output orientation must be gltf_y_up")
 
 
 def transform_points(points: np.ndarray, matrix: np.ndarray) -> np.ndarray:
@@ -105,7 +111,7 @@ def clean_face_mesh(
         "largest_component_fraction": float(component_fraction),
         "output_vertices": int(len(cleaned.vertices)),
         "output_faces": int(len(cleaned.faces)),
-        "source_to_output_row_matrix": np.eye(4, dtype=np.float64).tolist(),
+        "source_to_output_row_matrix": SOURCE_TO_GLTF_Y_UP_ROW_MATRIX.tolist(),
         "smooth_displacement_mean": float(displacement.mean()),
         "smooth_displacement_p95": float(np.quantile(displacement, 0.95)),
         "smooth_displacement_max": float(displacement.max()),

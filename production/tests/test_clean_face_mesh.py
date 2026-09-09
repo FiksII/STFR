@@ -9,6 +9,7 @@ from production.clean_face_mesh import CleanupConfig, clean_face_mesh
 
 def test_cleanup_defaults_to_measured_laplacian_pass_count() -> None:
     assert CleanupConfig().smooth_iterations == 20
+    assert CleanupConfig().output_orientation == "gltf_y_up"
 
 
 def test_cleanup_keeps_largest_2dgs_component_in_source_coordinates(
@@ -39,7 +40,9 @@ def test_cleanup_keeps_largest_2dgs_component_in_source_coordinates(
     assert len(cleaned.faces) == len(face.faces)
     assert report["component_face_counts"] == [len(face.faces), len(noise.faces)]
     assert np.allclose(cleaned.bounds, face.bounds, atol=1e-6)
-    assert report["source_to_output_row_matrix"] == np.eye(4).tolist()
+    assert report["source_to_output_row_matrix"] == np.diag(
+        [-1.0, -1.0, 1.0, 1.0]
+    ).tolist()
     assert "mask_faces_before_closing" not in report
 
 

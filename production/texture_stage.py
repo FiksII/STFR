@@ -75,6 +75,7 @@ class TextureConfig:
     uv_method: str = "cube"
     atlas_size: int = 1024
     uv_padding_pixels: int = 2
+    lpips_max_size: int = 512
 
     def uv_options(self) -> dict[str, int]:
         return {
@@ -89,6 +90,8 @@ class TextureConfig:
             raise ValueError("Physical GPU index cannot be negative")
         if self.iterations < 1:
             raise ValueError("Texture iterations must be positive")
+        if self.lpips_max_size < 1:
+            raise ValueError("LPIPS maximum size must be positive")
         if self.uv_method != "cube":
             raise ValueError("Production texture stage requires cube UVs")
         if self.atlas_size < 1 or self.uv_padding_pixels < 0:
@@ -156,6 +159,8 @@ def run_texture_stage(
                 "0",
                 "--iterations",
                 str(config.iterations),
+                "--lpips-max-size",
+                str(config.lpips_max_size),
             ),
             texture_root,
         ),
@@ -179,6 +184,7 @@ def run_texture_stage(
         "texture": str(output_texture),
         "iterations": config.iterations,
         "physical_gpu": config.physical_gpu,
+        "lpips_max_size": config.lpips_max_size,
         "dataset": dataset_report,
         "uv": uv_report,
     }

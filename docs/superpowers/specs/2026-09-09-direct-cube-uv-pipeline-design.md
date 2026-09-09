@@ -52,10 +52,10 @@ and disconnected debris, then keep the largest connected triangle component. App
 the currently validated low-strength Laplacian smoothing to reduce reconstruction
 noise.
 
-Do not crop against a reference head, fit FLAME, repair holes, decimate triangles, or
-transform the mesh into another coordinate system. The cleaner emits one source-space
-PLY and an identity transform report. All surviving triangle indices and coordinates
-become the input contract for UV generation.
+Do not crop against a reference head, fit FLAME, repair holes, or decimate triangles.
+The cleaner emits one source-space PLY plus a proper 180-degree Z rotation for final
+glTF Y-up export. UV generation operates on the untransformed source mesh, and all
+surviving triangle indices and coordinates become its input contract.
 
 ### 3. Generate deterministic cube UVs
 
@@ -89,7 +89,9 @@ vertices, and face count.
 Pass the cube-UV OBJ and MTL to the existing STFR texture stage. Render visibility and
 geometry buffers from the selected sharp frames, then train the neural texture with
 the configured iteration count on the requested physical GPU. The stage writes
-`uv.png` and preserves the OBJ material binding.
+`uv.png` and preserves the OBJ material binding. To keep training within shared RTX
+3090 memory, only LPIPS inputs are proportionally bounded to a 512-pixel long edge;
+the 1024 texture and geometry-aware L1 branch remain full-resolution.
 
 Texture generation may expose seams at chart boundaries, but it must not smooth,
 resample, decimate, or otherwise modify mesh positions or faces. No generative fill,
@@ -97,14 +99,15 @@ beauty filter, or skin retouching is part of the production pipeline.
 
 ### 5. Export and validate
 
-Export the textured OBJ directly to GLB in reconstructed coordinates. Embed the
+Export the textured OBJ to GLB with the cleaner's proper Y-up rotation. Embed the
 texture, reload the GLB with trimesh, and validate it before atomically publishing the
-requested output.
+requested output. Resume fingerprints include content hashes for texture-to-export
+and export-to-publish inputs so a rebuilt upstream artifact cannot leave stale output.
 
 Validation requires:
 
 - unchanged triangle count between cleaned PLY, cube-UV OBJ, and GLB;
-- unchanged geometry bounds within serializer tolerance;
+- geometry bounds matching the transformed source within serializer tolerance;
 - finite positions, normals, and UVs;
 - UVs within `[0, 1]` and inside their chart padding;
 - valid MTL-to-`uv.png` binding and an embedded GLB material texture;

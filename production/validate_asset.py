@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 import trimesh
 
+from production.clean_face_mesh import transform_points
 from production.unwrap_2dgs_uv import (
     load_triangle_mesh,
     validate_cube_uv_padding,
@@ -21,11 +22,21 @@ def validate_asset(
     glb_path: Path,
     expected_texture_size: tuple[int, int] = (1024, 1024),
     uv_padding_pixels: int = 2,
+    source_to_output_matrix: np.ndarray | None = None,
 ) -> dict:
     if expected_texture_size[0] != expected_texture_size[1]:
         raise ValueError("Cube UV validation requires a square texture")
     source = load_triangle_mesh(source_path)
     textured = load_triangle_mesh(obj_path)
+    matrix = (
+        np.eye(4, dtype=np.float64)
+        if source_to_output_matrix is None
+        else np.asarray(source_to_output_matrix, dtype=np.float64)
+    )
+    transformed_source_vertices = transform_points(source.vertices, matrix)
+    transformed_source_bounds = np.array(
+        [transformed_source_vertices.min(axis=0), transformed_source_vertices.max(axis=0)]
+    )
     texture = Image.open(texture_path).convert("RGB")
     pixels = np.asarray(texture, dtype=np.float32)
     mtl_path = obj_path.with_suffix(".mtl")
@@ -34,7 +45,7 @@ def validate_asset(
 
     if len(source.faces) != len(textured.faces):
         raise ValueError("UV export changed the triangle count")
-    if not np.allclose(source.bounds, textured.bounds, atol=1e-6):
+    if not np.allclose(transformed_source_bounds, textured.bounds, atol=1e-6):
         raise ValueError("UV export changed geometry bounds")
     if textured.visual.kind != "texture":
         raise ValueError(f"Expected texture visuals, got {textured.visual.kind}")

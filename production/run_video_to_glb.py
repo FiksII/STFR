@@ -60,6 +60,34 @@ def build_texture_resume_config(config: TextureConfig) -> dict:
     return payload
 
 
+def build_asset_export_resume_config(
+    texture_report: dict,
+    matrix: np.ndarray,
+) -> dict:
+    return {
+        "matrix": np.asarray(matrix, dtype=np.float64).tolist(),
+        "stem": "face",
+        "source_obj_sha256": file_sha256(Path(texture_report["obj"])),
+        "source_mtl_sha256": file_sha256(Path(texture_report["mtl"])),
+        "texture_sha256": file_sha256(Path(texture_report["texture"])),
+    }
+
+
+def build_validation_resume_config(
+    clean_geometry: Path,
+    staged_glb: Path,
+    atlas_size: int,
+    uv_padding_pixels: int,
+) -> dict:
+    return {
+        "texture_size": [atlas_size, atlas_size],
+        "uv_method": "cube",
+        "uv_padding_pixels": uv_padding_pixels,
+        "clean_geometry_sha256": file_sha256(clean_geometry),
+        "staged_glb_sha256": file_sha256(staged_glb),
+    }
+
+
 def publish_validated_glb(staged_glb: Path, output: Path, quality: dict) -> dict:
     staged_glb = Path(staged_glb)
     output = Path(output)
@@ -127,6 +155,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mesh-res", type=int, default=1024)
     parser.add_argument("--smooth-iterations", type=int, default=20)
     parser.add_argument("--texture-iterations", type=int, default=301)
+    parser.add_argument("--lpips-max-size", type=int, default=512)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
@@ -218,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
             python=args.python,
             physical_gpu=args.physical_gpu,
             iterations=args.texture_iterations,
+            lpips_max_size=args.lpips_max_size,
         )
         texture_report_path = artifacts / "texture-report.json"
         texture_report = execute_stage(
@@ -236,10 +266,10 @@ def main(argv: list[str] | None = None) -> int:
 
         export_root = artifacts / "export"
         export_report_path = export_root / "export-report.json"
-        export_config = {
-            "matrix": clean_report["source_to_output_row_matrix"],
-            "stem": "face",
-        }
+        export_config = build_asset_export_resume_config(
+            texture_report,
+            np.asarray(clean_report["source_to_output_row_matrix"], dtype=np.float64),
+        )
         export_report = execute_stage(
             "asset_export",
             export_config,
@@ -263,11 +293,12 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         validation_report_path = artifacts / "validation-report.json"
-        validation_config = {
-            "texture_size": [texture_config.atlas_size, texture_config.atlas_size],
-            "uv_method": texture_config.uv_method,
-            "uv_padding_pixels": texture_config.uv_padding_pixels,
-        }
+        validation_config = build_validation_resume_config(
+            clean_geometry,
+            Path(export_report["glb"]),
+            texture_config.atlas_size,
+            texture_config.uv_padding_pixels,
+        )
 
         def validate_and_publish() -> dict:
             quality = validate_asset(
@@ -277,6 +308,10 @@ def main(argv: list[str] | None = None) -> int:
                 Path(export_report["glb"]),
                 expected_texture_size=(texture_config.atlas_size,) * 2,
                 uv_padding_pixels=texture_config.uv_padding_pixels,
+                source_to_output_matrix=np.asarray(
+                    clean_report["source_to_output_row_matrix"],
+                    dtype=np.float64,
+                ),
             )
             return publish_validated_glb(Path(export_report["glb"]), output, quality)
 

@@ -59,6 +59,7 @@ def test_texture_config_exposes_production_cube_uv_options(tmp_path: Path) -> No
 
     assert config.uv_method == "cube"
     assert config.uv_options() == {"atlas_size": 1024, "padding_pixels": 2}
+    assert config.lpips_max_size == 512
 
 
 def test_texture_config_rejects_padding_that_consumes_a_tile(

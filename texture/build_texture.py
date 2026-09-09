@@ -10,10 +10,13 @@ parser.add_argument('--vis_freq', type=int, default=50)
 parser.add_argument('--data_root', type=str, default="xxx")
 parser.add_argument('--mesh_path', type=str, default=None)
 parser.add_argument('--iterations', type=int, default=301)
+parser.add_argument('--lpips-max-size', type=int, default=512)
 
 opt, _ = parser.parse_known_args()
 if opt.iterations < 1:
     parser.error("--iterations must be positive")
+if opt.lpips_max_size < 1:
+    parser.error("--lpips-max-size must be positive")
 
 opt.meta_file_path = os.path.join(opt.data_root, "transforms.json")
 
@@ -40,6 +43,7 @@ import open3d as o3d
 
 from module import InstantNGPNetwork
 from mesh_renderer import MeshRenderer
+from lpips_memory import bound_lpips_inputs
 
 
 net_cfg = {
@@ -434,7 +438,16 @@ class DiffusionSampler:
                 loss_l1 = F.l1_loss(grad_pred * weight_img[:, :, None, ...], grad_gt * weight_img[:, :, None, ...])
                 
                 if i > 100:
-                    loss_lpips = self.lpips_loss(img_pred, img_gt, normalize=True).mean()
+                    lpips_pred, lpips_gt = bound_lpips_inputs(
+                        img_pred,
+                        img_gt,
+                        opt.lpips_max_size,
+                    )
+                    loss_lpips = self.lpips_loss(
+                        lpips_pred,
+                        lpips_gt,
+                        normalize=True,
+                    ).mean()
                     loss = 10 * loss_l1 + 0.1 * loss_lpips
                 else:
                     loss = 10 * loss_l1
@@ -466,7 +479,16 @@ class DiffusionSampler:
                         render_list.append(img_pred)
                         cur_psnr = kornia.metrics.psnr(img_pred, img_gt, max_val=1.).item()
                         cur_ssim = kornia.metrics.ssim(img_pred, img_gt, window_size=3).mean().item()
-                        cur_lpips = self.lpips_loss(img_pred, img_gt, normalize=True).mean()
+                        lpips_pred, lpips_gt = bound_lpips_inputs(
+                            img_pred,
+                            img_gt,
+                            opt.lpips_max_size,
+                        )
+                        cur_lpips = self.lpips_loss(
+                            lpips_pred,
+                            lpips_gt,
+                            normalize=True,
+                        ).mean()
                         psnr_list.append(cur_psnr)
                         ssim_list.append(cur_ssim)
                         lpips_list.append(cur_lpips)

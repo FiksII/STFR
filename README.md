@@ -10,16 +10,20 @@ uv run python -m production.run_video_to_glb \
   --video /input/capture.mov \
   --job-root /jobs/123 \
   --output /jobs/123/result/face.glb \
-  --physical-gpu 1
+  --physical-gpu 1 \
+  --lpips-max-size 512
 ```
 
 The production defaults use the full 30,000-iteration 2DGS reconstruction, mesh
 resolution 1024, direct largest-component cleanup in reconstructed coordinates,
 20 volume-preserving Laplacian smoothing passes, deterministic cube UVs with
 two-pixel chart padding, and 301 texture iterations. The production entry point
-does not run FLAME registration or Faceform Wrap. Add `--resume` to reuse stages
-whose configuration and recorded outputs still match. Use `--dry-run` to print
-the complete JSON stage plan without touching the filesystem or CUDA.
+does not run FLAME registration or Faceform Wrap. LPIPS is evaluated at a bounded
+512-pixel long edge while the UV texture and geometry-aware L1 loss remain at full
+resolution. The final asset is rotated into glTF Y-up coordinates. Add `--resume`
+to reuse stages whose configuration, input hashes, and recorded outputs still
+match. Use `--dry-run` to print the complete JSON stage plan without touching the
+filesystem or CUDA.
 
 The required product is the requested GLB. A sibling `result.json` contains its hash,
 size, and quality report. Intermediate geometry, UV files, texture, and diagnostics

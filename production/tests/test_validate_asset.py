@@ -14,6 +14,7 @@ def build_asset(
     tmp_path: Path,
     uniform: bool = False,
     texture_size: int = 4,
+    matrix: np.ndarray | None = None,
 ):
     vertices = np.array(
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64
@@ -34,7 +35,13 @@ def build_asset(
         split = max(texture_size // 2, 1)
         pixels[:split, :split] = (220, 80, 40)
     Image.fromarray(pixels).save(texture)
-    exported = export_canonical_asset(obj, mtl, texture, np.eye(4), tmp_path / "output")
+    exported = export_canonical_asset(
+        obj,
+        mtl,
+        texture,
+        np.eye(4) if matrix is None else matrix,
+        tmp_path / "output",
+    )
     return source_path, exported
 
 
@@ -81,3 +88,22 @@ def test_validate_asset_rejects_uv_on_cube_tile_edge(tmp_path: Path) -> None:
             expected_texture_size=(12, 12),
             uv_padding_pixels=1,
         )
+
+
+def test_validate_asset_compares_bounds_after_output_transform(
+    tmp_path: Path,
+) -> None:
+    matrix = np.diag([-1.0, -1.0, 1.0, 1.0])
+    source, exported = build_asset(tmp_path, matrix=matrix)
+
+    report = validate_asset(
+        source,
+        Path(exported["obj"]),
+        Path(exported["texture"]),
+        Path(exported["glb"]),
+        expected_texture_size=(4, 4),
+        uv_padding_pixels=0,
+        source_to_output_matrix=matrix,
+    )
+
+    assert report["source_faces"] == report["glb_faces"] == 4
