@@ -1,0 +1,49 @@
+import json
+from pathlib import Path
+
+from PIL import Image
+
+from production.texture_stage import prepare_dataset
+
+
+def test_prepare_dataset_keeps_only_refinement_frames(tmp_path: Path) -> None:
+    source = tmp_path / "workspace"
+    selected = source / "refinement" / "sample" / "image"
+    selected.mkdir(parents=True)
+    masks = source / "mask"
+    masks.mkdir(parents=True)
+    Image.new("RGB", (2, 2), "red").save(selected / "00001.png")
+    Image.new("RGB", (2, 2), "blue").save(selected / "00003.png")
+    Image.new("L", (2, 2), 255).save(masks / "00001.png")
+    Image.new("L", (2, 2), 255).save(masks / "00003.png")
+    metadata = {
+        "w": 2,
+        "h": 2,
+        "fl_x": 2.0,
+        "fl_y": 2.0,
+        "cx": 1.0,
+        "cy": 1.0,
+        "frames": [
+            {"file_path": f"/capture/{index:05d}.png", "transform_matrix": []}
+            for index in range(1, 4)
+        ],
+    }
+    (source / "transforms.json").write_text(json.dumps(metadata), encoding="utf-8")
+    dataset = tmp_path / "dataset"
+
+    report = prepare_dataset(source, dataset)
+
+    result = json.loads((dataset / "transforms.json").read_text(encoding="utf-8"))
+    assert report["selected_images"] == 2
+    assert [Path(frame["file_path"]).name for frame in result["frames"]] == [
+        "00001.png",
+        "00003.png",
+    ]
+    assert sorted(path.name for path in (dataset / "image").glob("*.png")) == [
+        "00001.png",
+        "00003.png",
+    ]
+    assert sorted(path.name for path in (dataset / "mask").glob("*.png")) == [
+        "00001.png",
+        "00003.png",
+    ]
