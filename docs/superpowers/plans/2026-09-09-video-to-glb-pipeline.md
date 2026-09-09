@@ -1,5 +1,9 @@
 # STFR Video-to-GLB Production Pipeline Implementation Plan
 
+> Superseded for production by
+> `2026-09-09-direct-cube-uv-pipeline.md`. This plan is retained only as
+> implementation history for the earlier Wrap/xatlas design.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add worker-callable scripts that turn one face video into one validated, canonically oriented, textured GLB.
