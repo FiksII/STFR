@@ -935,7 +935,7 @@ From PowerShell in the local repository, create and upload a branch bundle:
 ```powershell
 New-Item -ItemType Directory -Force -Path 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work'
 git bundle create 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work\stfr-cube-uv.bundle' pipeline
-scp -P 2221 -i 'C:\Users\Ilya\.ssh\id_rsa_r_rsasa' 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work\stfr-cube-uv.bundle' ii@95.79.44.129:/tmp/stfr-cube-uv.bundle
+scp -P 2221 -i 'C:\Users\Ilya\.ssh\id_rsa' 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work\stfr-cube-uv.bundle' ii@95.79.44.129:/tmp/stfr-cube-uv.bundle
 ```
 
 Publish it from a fresh temporary server clone:
@@ -965,7 +965,7 @@ Stop if the status contains a file outside the known production change set. From
 
 ```powershell
 tar -cf 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work\stfr-cube-uv-files.tar' AGENTS.md ENV.md README.md pyproject.toml uv.lock production/clean_face_mesh.py production/export_glb.py production/reconstruction_stage.py production/run_video_to_glb.py production/texture_stage.py production/unwrap_2dgs_uv.py production/validate_asset.py production/tests/test_clean_face_mesh.py production/tests/test_export_glb.py production/tests/test_pyproject.py production/tests/test_reconstruction_stage.py production/tests/test_run_video_to_glb.py production/tests/test_state.py production/tests/test_texture_stage.py production/tests/test_unwrap_2dgs_uv.py production/tests/test_validate_asset.py
-scp -P 2221 -i 'C:\Users\Ilya\.ssh\id_rsa_r_rsasa' 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work\stfr-cube-uv-files.tar' ii@95.79.44.129:/tmp/stfr-cube-uv-files.tar
+scp -P 2221 -i 'C:\Users\Ilya\.ssh\id_rsa' 'C:\Users\Ilya\Documents\Codex\2026-09-07\dj\work\stfr-cube-uv-files.tar' ii@95.79.44.129:/tmp/stfr-cube-uv-files.tar
 ```
 
 Extract and verify on the server:
