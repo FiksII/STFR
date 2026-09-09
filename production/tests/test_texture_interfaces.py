@@ -31,3 +31,10 @@ def test_texture_scripts_accept_explicit_mesh_and_iterations() -> None:
 def test_texture_builder_preserves_parent_gpu_mapping() -> None:
     script = (PROJECT_ROOT / "texture/build_texture.py").read_text(encoding="utf-8")
     assert 'os.environ.setdefault("CUDA_VISIBLE_DEVICES", opt.device)' in script
+
+
+def test_mesh_renderer_allocates_bins_for_every_face() -> None:
+    script = (PROJECT_ROOT / "texture/mesh_renderer.py").read_text(encoding="utf-8")
+
+    assert "max_faces_per_bin = int(faces.shape[1])" in script
+    assert script.count("max_faces_per_bin=max_faces_per_bin") == 2

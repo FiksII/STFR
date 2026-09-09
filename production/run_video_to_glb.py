@@ -58,7 +58,17 @@ def file_sha256(path: Path) -> str:
 
 def build_texture_resume_config(config: TextureConfig) -> dict:
     payload = asdict(config)
+    code_root = Path(config.code_root)
     payload["source_mesh_sha256"] = file_sha256(config.source_mesh)
+    payload["renderer_code_sha256"] = file_sha256(
+        code_root / "texture" / "mesh_renderer.py"
+    )
+    payload["texture_code_sha256"] = file_sha256(
+        code_root / "texture" / "build_texture.py"
+    )
+    payload["unwrap_code_sha256"] = file_sha256(
+        code_root / "production" / "unwrap_2dgs_uv.py"
+    )
     return payload
 
 
@@ -69,9 +79,16 @@ def build_face_crop_resume_config(
     selected_frames_root: Path,
 ) -> dict:
     selected_frames = sorted(Path(selected_frames_root).glob("*.png"))
+    code_root = Path(__file__).resolve().parents[1]
     return {
         **asdict(config),
         "uv_input": "visible_2dgs_faces",
+        "crop_code_sha256": file_sha256(
+            code_root / "production" / "face_crop_stage.py"
+        ),
+        "renderer_code_sha256": file_sha256(
+            code_root / "texture" / "mesh_renderer.py"
+        ),
         "source_mesh_sha256": file_sha256(Path(source_mesh)),
         "transforms_sha256": file_sha256(Path(transforms_path)),
         "selected_frames": [

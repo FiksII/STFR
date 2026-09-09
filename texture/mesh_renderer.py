@@ -29,7 +29,14 @@ class MeshRenderer:
         ############
         # render
         mesh = Meshes(vertice_ndc, faces)
-        pix_to_face, _, bary_coords, _ = rasterize_meshes(mesh, (h, w), faces_per_pixel=1, blur_radius=0)  # [b,h,w,1] [b,h,w,1,3]
+        max_faces_per_bin = int(faces.shape[1])
+        pix_to_face, _, bary_coords, _ = rasterize_meshes(
+            mesh,
+            (h, w),
+            faces_per_pixel=1,
+            blur_radius=0,
+            max_faces_per_bin=max_faces_per_bin,
+        )  # [b,h,w,1] [b,h,w,1,3]
 
         # mask = pix_to_face > -1
         # save_image(mask.float().permute(0, 3, 1, 2), "pix_to_face.png")
@@ -87,7 +94,15 @@ class MeshRenderer:
         ############
         # render
         mesh = Meshes(vertice_ndc, faces)
-        pix_to_face, _, bary_coords, _ = rasterize_meshes(mesh, (h, w), faces_per_pixel=1, blur_radius=0, cull_backfaces=True)  # [b,h,w,1] [b,h,w,1,3]
+        max_faces_per_bin = int(faces.shape[1])
+        pix_to_face, _, bary_coords, _ = rasterize_meshes(
+            mesh,
+            (h, w),
+            faces_per_pixel=1,
+            blur_radius=0,
+            cull_backfaces=True,
+            max_faces_per_bin=max_faces_per_bin,
+        )  # [b,h,w,1] [b,h,w,1,3]
 
         # mask = pix_to_face > -1
         # save_image(mask.float().permute(0, 3, 1, 2), "pix_to_face.png")

@@ -96,7 +96,8 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
 ) -> None:
     mesh = tmp_path / "face.ply"
     mesh.write_bytes(b"aaaa")
-    config = TextureConfig(tmp_path, tmp_path, mesh, tmp_path / "artifacts")
+    code_root = Path(__file__).resolve().parents[2]
+    config = TextureConfig(code_root, tmp_path, mesh, tmp_path / "artifacts")
     first = build_texture_resume_config(config)
 
     mesh.write_bytes(b"bbbb")
@@ -105,6 +106,9 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
     assert first["uv_method"] == second["uv_method"] == "xatlas"
     assert first["atlas_size"] == second["atlas_size"] == 1024
     assert first["lpips_max_size"] == second["lpips_max_size"] == 512
+    assert len(first["renderer_code_sha256"]) == 64
+    assert len(first["texture_code_sha256"]) == 64
+    assert len(first["unwrap_code_sha256"]) == 64
     assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
 
 
@@ -128,6 +132,8 @@ def test_face_crop_resume_fingerprint_tracks_mesh_cameras_and_frames(
     third = build_face_crop_resume_config(config, mesh, transforms, frames)
 
     assert first["uv_input"] == second["uv_input"] == "visible_2dgs_faces"
+    assert len(first["crop_code_sha256"]) == 64
+    assert len(first["renderer_code_sha256"]) == 64
     assert first["selected_frames"] != second["selected_frames"]
     assert second["transforms_sha256"] != third["transforms_sha256"]
 
