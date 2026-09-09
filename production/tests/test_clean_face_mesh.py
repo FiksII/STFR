@@ -5,12 +5,58 @@ import pytest
 import trimesh
 from trimesh.smoothing import filter_taubin
 
-from production.clean_face_mesh import CleanupConfig, clean_face_mesh
+from production.clean_face_mesh import (
+    CleanupConfig,
+    canonical_face_transform,
+    clean_face_mesh,
+    transform_points,
+)
 
 
 def test_cleanup_defaults_to_three_taubin_passes() -> None:
     assert CleanupConfig().smooth_iterations == 3
     assert CleanupConfig().output_orientation == "gltf_y_up"
+    assert CleanupConfig().target_face_height == 1.35
+
+
+def test_camera_canonical_transform_centers_scales_and_orients_face() -> None:
+    canonical = np.array(
+        [
+            [x, y, z]
+            for x in (-1.0, 1.0)
+            for y in (-2.0, 2.0)
+            for z in (-0.25, 0.25)
+        ]
+    )
+    rotation = trimesh.transformations.euler_matrix(0.2, -0.4, 0.3)[:3, :3]
+    translation = np.array([4.0, -3.0, 7.0])
+    vertices = canonical @ rotation.T + translation
+    world_up = rotation[:, 1]
+    world_forward = rotation[:, 2]
+    camera_to_world = []
+    for offset in (-0.5, 0.5):
+        transform = np.eye(4)
+        transform[:3, 1] = -world_up
+        transform[:3, 3] = translation + world_forward * 10.0 + rotation[:, 0] * offset
+        camera_to_world.append(transform)
+
+    matrix = canonical_face_transform(
+        vertices,
+        np.asarray(camera_to_world),
+        target_height=1.35,
+    )
+    transformed = transform_points(vertices, matrix)
+    transformed_cameras = transform_points(
+        np.asarray(camera_to_world)[:, :3, 3],
+        matrix,
+    )
+    transformed_up = world_up @ matrix[:3, :3]
+
+    assert np.allclose((transformed.min(axis=0) + transformed.max(axis=0)) / 2, 0)
+    assert np.ptp(transformed[:, 1]) == pytest.approx(1.35)
+    assert transformed_cameras[:, 2].mean() > 0
+    assert transformed_up[1] > 0
+    assert np.linalg.det(matrix[:3, :3]) > 0
 
 
 def test_cleanup_keeps_largest_2dgs_component_in_source_coordinates(

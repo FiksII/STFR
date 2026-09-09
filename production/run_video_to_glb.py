@@ -13,7 +13,11 @@ from typing import Callable, Iterable
 
 import numpy as np
 
-from production.clean_face_mesh import CleanupConfig, clean_face_mesh
+from production.clean_face_mesh import (
+    CleanupConfig,
+    clean_face_mesh,
+    load_camera_to_world_matrices,
+)
 from production.export_glb import export_canonical_asset
 from production.face_crop_stage import FaceCropConfig, crop_face_mesh
 from production.reconstruction_stage import (
@@ -95,6 +99,22 @@ def build_face_crop_resume_config(
             {"name": frame.name, "sha256": file_sha256(frame)}
             for frame in selected_frames
         ],
+    }
+
+
+def build_clean_resume_config(
+    config: CleanupConfig,
+    source_mesh: Path,
+    transforms_path: Path,
+) -> dict:
+    code_root = Path(__file__).resolve().parents[1]
+    return {
+        **asdict(config),
+        "source_mesh_sha256": file_sha256(Path(source_mesh)),
+        "transforms_sha256": file_sha256(Path(transforms_path)),
+        "cleanup_code_sha256": file_sha256(
+            code_root / "production" / "clean_face_mesh.py"
+        ),
     }
 
 
@@ -296,10 +316,11 @@ def main(argv: list[str] | None = None) -> int:
 
         clean_geometry = artifacts / "face_geometry.ply"
         clean_report_path = artifacts / "geometry-report.json"
-        clean_resume_config = {
-            **asdict(cleanup_config),
-            "source_mesh_sha256": file_sha256(face_crop_geometry),
-        }
+        clean_resume_config = build_clean_resume_config(
+            cleanup_config,
+            face_crop_geometry,
+            workspace / "transforms.json",
+        )
         clean_report = execute_stage(
             "clean_geometry",
             clean_resume_config,
@@ -309,6 +330,9 @@ def main(argv: list[str] | None = None) -> int:
                 face_crop_geometry,
                 clean_geometry,
                 cleanup_config,
+                camera_to_world_matrices=load_camera_to_world_matrices(
+                    workspace / "transforms.json"
+                ),
             ),
             state,
             args.resume,

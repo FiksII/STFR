@@ -21,9 +21,11 @@ resumed from the geometry stage without retraining.
    background component outside the crop. Optional face-adjacency expansion
    remains configurable and defaults to zero.
 5. Apply three low-displacement Taubin smoothing iterations to the cropped mesh.
+   Estimate a right-handed canonical frame from the facial surface plane and
+   COLMAP camera poses, then center the face and scale its height to 1.35 units.
 6. Generate non-overlapping UV islands with `xatlas`, optimize the 1024x1024
-   texture for 301 iterations, export the Y-up GLB, and run the existing asset
-   checks.
+   texture for 301 iterations, export the canonical Y-up GLB, and run the existing
+   asset checks.
 
 MediaPipe landmarks are used only to locate the face in images. They do not
 replace or deform the 2DGS surface.

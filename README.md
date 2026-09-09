@@ -21,7 +21,9 @@ low-displacement Taubin smoothing passes, non-overlapping xatlas UV islands, and
 301 texture iterations. The production entry point does
 not run FLAME registration or Faceform Wrap. LPIPS is evaluated at a bounded
 512-pixel long edge while the UV texture and geometry-aware L1 loss remain at full
-resolution. The final asset is rotated into glTF Y-up coordinates. Add `--resume`
+resolution. The final asset is centered, scaled to a 1.35-unit face height, and
+oriented into glTF Y-up coordinates from the COLMAP camera poses and facial
+surface plane. Add `--resume`
 to reuse stages whose configuration, input hashes, and recorded outputs still
 match. Use `--dry-run` to print the complete JSON stage plan without touching the
 filesystem or CUDA.

@@ -145,9 +145,10 @@ background. It then uses non-overlapping xatlas UV islands for texture
 optimization. `xatlas==0.0.11` is installed by the frozen uv
 environment. Texture training bounds only the LPIPS input to a 512-pixel long
 edge; its UV output and geometry-aware L1 loss remain full-resolution. Export
-applies a 180-degree proper rotation around Z so the GLB is Y-up without
-mirroring. The upstream registration scripts remain in the repository only as a
-legacy research workflow.
+uses the facial surface plane and COLMAP camera poses to center the face, scale it
+to a 1.35-unit height, point it toward positive Z, and preserve a right-handed
+glTF Y-up coordinate system. The upstream registration scripts remain in the
+repository only as a legacy research workflow.
 
 The following large model is intentionally excluded from Git and must be
 provisioned separately:

@@ -6,12 +6,14 @@ import numpy as np
 import production.run_video_to_glb as pipeline
 from production.run_video_to_glb import (
     PIPELINE_STAGES,
+    build_clean_resume_config,
     build_face_crop_resume_config,
     build_texture_resume_config,
     main,
     publish_validated_glb,
 )
 from production.face_crop_stage import FaceCropConfig
+from production.clean_face_mesh import CleanupConfig
 from production.texture_stage import TextureConfig
 
 
@@ -110,6 +112,21 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
     assert len(first["texture_code_sha256"]) == 64
     assert len(first["unwrap_code_sha256"]) == 64
     assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
+
+
+def test_clean_resume_fingerprint_tracks_mesh_cameras_and_code(tmp_path: Path) -> None:
+    mesh = tmp_path / "face-crop.ply"
+    transforms = tmp_path / "transforms.json"
+    mesh.write_bytes(b"mesh-a")
+    transforms.write_bytes(b"cameras-a")
+
+    first = build_clean_resume_config(CleanupConfig(), mesh, transforms)
+    transforms.write_bytes(b"cameras-b")
+    second = build_clean_resume_config(CleanupConfig(), mesh, transforms)
+
+    assert len(first["cleanup_code_sha256"]) == 64
+    assert first["target_face_height"] == 1.35
+    assert first["transforms_sha256"] != second["transforms_sha256"]
 
 
 def test_face_crop_resume_fingerprint_tracks_mesh_cameras_and_frames(
