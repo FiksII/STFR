@@ -44,7 +44,9 @@ def build_reconstruction_commands(config: ReconstructionConfig) -> list[CommandS
     masks = workspace / "mask"
     reconstruction = code_root / "reconstruction"
     gaussian = reconstruction / "2d-gaussian-splatting"
+    refinement = code_root / "refinement"
     recon_output = workspace / "recon"
+    sample_output = workspace / "refinement" / "sample"
     frame_filter = (
         f"select=not(mod(n\\,{config.video_step_size})),"
         f"scale=iw*{config.video_ds_ratio:g}:ih*{config.video_ds_ratio:g},setsar=1:1"
@@ -150,14 +152,32 @@ def build_reconstruction_commands(config: ReconstructionConfig) -> list[CommandS
             reconstruction,
         ),
         CommandSpec(
-            "refinement",
+            "compute_sharpness",
             (
                 config.python,
-                str(code_root / "refinement" / "run_refinement.py"),
-                "--data_root",
-                str(workspace),
+                str(refinement / "select_frame" / "compute_sharpness.py"),
+                "--img_root",
+                str(raw_frames),
+                "--save_root",
+                str(sample_output),
             ),
-            code_root / "refinement",
+            refinement,
+        ),
+        CommandSpec(
+            "sample_sharp_frames",
+            (
+                config.python,
+                str(refinement / "select_frame" / "sample_by_sharpness.py"),
+                "--img_root",
+                str(raw_frames),
+                "--cam_path",
+                str(workspace / "transforms.json"),
+                "--save_root",
+                str(sample_output),
+                "--num_view",
+                "16",
+            ),
+            refinement,
         ),
     ]
 
