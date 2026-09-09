@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
+from PIL import Image
 import pytest
+import trimesh
 
 from production.face_crop_stage import (
     FaceCropConfig,
     aggregate_visible_faces,
+    crop_face_mesh,
     expand_face_selection,
     padded_face_oval_mask,
 )
@@ -97,3 +103,117 @@ def test_face_crop_config_rejects_invalid_values(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         config.validate()
+
+
+def make_crop_inputs(tmp_path):
+    mesh = trimesh.creation.box()
+    mesh_path = tmp_path / "source.ply"
+    mesh.export(mesh_path)
+    frames_root = tmp_path / "frames"
+    frames_root.mkdir()
+    frames = []
+    for index in range(3):
+        name = f"{index:05d}.png"
+        Image.new("RGB", (8, 8), "white").save(frames_root / name)
+        frames.append(
+            {
+                "file_path": f"/capture/{name}",
+                "transform_matrix": np.eye(4).tolist(),
+            }
+        )
+    transforms_path = tmp_path / "transforms.json"
+    transforms_path.write_text(
+        json.dumps(
+            {
+                "w": 8,
+                "h": 8,
+                "fl_x": 8.0,
+                "fl_y": 8.0,
+                "cx": 4.0,
+                "cy": 4.0,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return mesh, mesh_path, frames_root, transforms_path
+
+
+def test_crop_requires_minimum_detected_frames(tmp_path) -> None:
+    _, mesh_path, frames_root, transforms_path = make_crop_inputs(tmp_path)
+
+    with pytest.raises(ValueError, match="at least 3"):
+        crop_face_mesh(
+            source_path=mesh_path,
+            selected_frames_root=frames_root,
+            transforms_path=transforms_path,
+            output_path=tmp_path / "face.ply",
+            config=FaceCropConfig(minimum_detected_frames=3),
+            device="cuda:0",
+            detector=lambda _: None,
+            rasterizer=lambda frame, image_size: np.zeros(image_size, dtype=np.int64),
+        )
+
+
+def test_crop_exports_union_of_visible_faces(tmp_path) -> None:
+    mesh, mesh_path, frames_root, transforms_path = make_crop_inputs(tmp_path)
+    visible_by_name = {
+        "00000.png": 0,
+        "00001.png": 1,
+        "00002.png": 2,
+    }
+
+    def detect(_):
+        return np.array(
+            [[1.0, 1.0], [6.0, 1.0], [6.0, 6.0], [1.0, 6.0]],
+            dtype=np.float64,
+        )
+
+    def rasterize(frame, image_size):
+        raster = np.full(image_size, -1, dtype=np.int64)
+        raster[2:6, 2:6] = visible_by_name[Path(frame["file_path"]).name]
+        return raster
+
+    output = tmp_path / "face.ply"
+    report = crop_face_mesh(
+        source_path=mesh_path,
+        selected_frames_root=frames_root,
+        transforms_path=transforms_path,
+        output_path=output,
+        config=FaceCropConfig(
+            adjacency_rings=0,
+            minimum_detected_frames=3,
+            minimum_selected_faces=3,
+        ),
+        device="cuda:0",
+        detector=detect,
+        rasterizer=rasterize,
+    )
+
+    result = trimesh.load_mesh(output, process=False)
+    assert report["source_faces"] == len(mesh.faces)
+    assert report["detected_frames"] == 3
+    assert report["missed_frames"] == []
+    assert report["selected_faces_before_expansion"] == 3
+    assert report["selected_faces_after_expansion"] == 3
+    assert report["output_faces"] == len(result.faces) == 3
+
+
+def test_crop_rejects_too_few_selected_faces(tmp_path) -> None:
+    _, mesh_path, frames_root, transforms_path = make_crop_inputs(tmp_path)
+
+    with pytest.raises(ValueError, match="selected 1 faces"):
+        crop_face_mesh(
+            source_path=mesh_path,
+            selected_frames_root=frames_root,
+            transforms_path=transforms_path,
+            output_path=tmp_path / "face.ply",
+            config=FaceCropConfig(
+                adjacency_rings=0,
+                minimum_detected_frames=3,
+                minimum_selected_faces=2,
+            ),
+            device="cuda:0",
+            detector=lambda _: np.array([[1, 1], [6, 1], [4, 6]]),
+            rasterizer=lambda frame, image_size: np.zeros(image_size, dtype=np.int64),
+        )
