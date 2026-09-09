@@ -192,6 +192,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mesh-res", type=int, default=1024)
     parser.add_argument("--face-oval-scale", type=float, default=1.0)
     parser.add_argument("--face-adjacency-rings", type=int, default=0)
+    parser.add_argument("--face-maximum-hole-faces", type=int, default=1000)
     parser.add_argument("--smooth-iterations", type=int, default=3)
     parser.add_argument("--texture-iterations", type=int, default=301)
     parser.add_argument("--lpips-max-size", type=int, default=512)
@@ -224,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     face_crop_config = FaceCropConfig(
         oval_scale=args.face_oval_scale,
         adjacency_rings=args.face_adjacency_rings,
+        maximum_hole_faces=args.face_maximum_hole_faces,
     )
 
     if args.dry_run:

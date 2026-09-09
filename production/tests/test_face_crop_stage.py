@@ -13,6 +13,7 @@ from production.face_crop_stage import (
     aggregate_visible_faces,
     crop_face_mesh,
     expand_face_selection,
+    fill_small_face_gaps,
     padded_face_oval_mask,
 )
 
@@ -22,6 +23,7 @@ def test_production_crop_defaults_do_not_expand_beyond_face_oval() -> None:
 
     assert config.oval_scale == 1.0
     assert config.adjacency_rings == 0
+    assert config.maximum_hole_faces == 1000
 
 
 def test_padded_face_oval_mask_expands_about_landmark_center() -> None:
@@ -95,11 +97,29 @@ def test_expand_face_selection_adds_exact_adjacency_rings() -> None:
     assert two_rings.tolist() == [True, True, True, False]
 
 
+def test_fill_small_face_gaps_keeps_large_outside_component() -> None:
+    selected = np.array([True, False, True, False, False, False])
+    adjacency = np.array(
+        [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5]],
+        dtype=np.int64,
+    )
+
+    filled, report = fill_small_face_gaps(
+        selected,
+        adjacency,
+        maximum_hole_faces=100,
+    )
+
+    assert filled.tolist() == [True, True, True, False, False, False]
+    assert report == {"components": 2, "filled_components": 1, "filled_faces": 1}
+
+
 @pytest.mark.parametrize(
     ("config", "message"),
     [
         (FaceCropConfig(oval_scale=0.9), "oval scale"),
         (FaceCropConfig(adjacency_rings=-1), "adjacency rings"),
+        (FaceCropConfig(maximum_hole_faces=-1), "hole faces"),
         (FaceCropConfig(minimum_detected_frames=0), "detected frames"),
         (FaceCropConfig(minimum_selected_faces=0), "selected faces"),
     ],
@@ -189,6 +209,7 @@ def test_crop_exports_union_of_visible_faces(tmp_path) -> None:
         output_path=output,
         config=FaceCropConfig(
             adjacency_rings=0,
+            maximum_hole_faces=0,
             minimum_detected_frames=3,
             minimum_selected_faces=3,
         ),
@@ -203,6 +224,7 @@ def test_crop_exports_union_of_visible_faces(tmp_path) -> None:
     assert report["missed_frames"] == []
     assert report["selected_faces_before_expansion"] == 3
     assert report["selected_faces_after_expansion"] == 3
+    assert report["filled_hole_faces"] == 0
     assert report["output_faces"] == len(result.faces) == 3
 
 

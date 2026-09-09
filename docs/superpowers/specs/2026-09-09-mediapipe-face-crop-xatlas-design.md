@@ -15,8 +15,11 @@ resumed from the geometry stage without retraining.
    to no expansion because the measured 5% expansion retained non-face fragments.
 3. Rasterize the original 2DGS mesh with the matching COLMAP camera. Collect only
    the visible triangle IDs whose pixels fall inside the face mask.
-4. Union the triangle IDs across views and keep the largest connected component.
-   Optional face-adjacency expansion remains configurable and defaults to zero.
+4. Union the triangle IDs across views, fill unselected topology components of at
+   most 1000 faces that touch the selection, and keep the largest connected
+   component. This closes sub-pixel rasterization gaps while leaving the large
+   background component outside the crop. Optional face-adjacency expansion
+   remains configurable and defaults to zero.
 5. Apply three low-displacement Taubin smoothing iterations to the cropped mesh.
 6. Generate non-overlapping UV islands with `xatlas`, optimize the 1024x1024
    texture for 301 iterations, export the Y-up GLB, and run the existing asset
@@ -28,9 +31,9 @@ replace or deform the 2DGS surface.
 ## Components
 
 `production/face_crop_stage.py` owns MediaPipe detection, face-mask construction,
-camera-matched rasterization, face selection, adjacency expansion, and the crop
-report. Detection and selection helpers remain separable so geometry logic can be
-unit tested without loading MediaPipe or CUDA.
+camera-matched rasterization, face selection, bounded topology-gap filling,
+adjacency expansion, and the crop report. Detection and selection helpers remain
+separable so geometry logic can be unit tested without loading MediaPipe or CUDA.
 
 `production/clean_face_mesh.py` remains responsible for mesh sanitization,
 largest-component selection, bounded smoothing, and geometry quality metrics.
