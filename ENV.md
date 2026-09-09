@@ -1,5 +1,27 @@
 # Environment
-First, install the basic environment as follows: 
+
+## Recommended uv installation
+
+The production Python environment is locked for Ubuntu 24.04 x86_64, Python
+3.10, and NVIDIA CUDA. Install it from the repository root:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.10
+CUDA_HOME=/usr TORCH_CUDA_ARCH_LIST=8.6 uv sync --frozen --no-dev
+```
+
+Use `uv sync --frozen` when the development/test dependencies are also needed.
+See `AGENTS.md` for NVIDIA driver and CUDA Toolkit setup, CUDA-enabled COLMAP,
+Faceform Wrap, model weights, and validation commands.
+
+## Legacy manual installation
+
+The commands below document the original upstream installation. Prefer the
+locked uv environment above for production.
+
+First, install the basic environment as follows:
 
 ```
 # create a conda environment and activate it

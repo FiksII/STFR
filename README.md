@@ -5,7 +5,8 @@
 The worker-facing entry point accepts one video and publishes one validated GLB:
 
 ```bash
-python -m production.run_video_to_glb \
+CUDA_HOME=/usr TORCH_CUDA_ARCH_LIST=8.6 uv sync --frozen --no-dev
+uv run python -m production.run_video_to_glb \
   --video /input/capture.mov \
   --job-root /jobs/123 \
   --output /jobs/123/result/face.glb \
