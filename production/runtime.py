@@ -27,7 +27,9 @@ def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def emit_json(event: Event, stream: TextIO = sys.stdout) -> None:
+def emit_json(event: Event, stream: TextIO | None = None) -> None:
+    if stream is None:
+        stream = sys.stdout
     payload = {"timestamp": utc_timestamp(), **event}
     print(json.dumps(payload, sort_keys=True), file=stream, flush=True)
 

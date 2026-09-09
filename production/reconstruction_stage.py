@@ -55,6 +55,7 @@ def build_reconstruction_commands(config: ReconstructionConfig) -> list[CommandS
             "extract_frames",
             (
                 config.ffmpeg,
+                "-y",
                 "-hide_banner",
                 "-loglevel",
                 "error",

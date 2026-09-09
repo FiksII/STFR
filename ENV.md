@@ -24,6 +24,8 @@ pip install --no-build-isolation \
     tensorboard \
     mediapy \
     open3d \
+    pymeshlab \
+    xatlas \
     scikit-image==0.25.2 \
     iopath \
     yacs \

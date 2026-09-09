@@ -1,5 +1,28 @@
 # STFR: Stable and Topologically-Consistent 3D Face Reconstruction from a Smartphone Video
 
+## Production video-to-GLB pipeline
+
+The worker-facing entry point accepts one video and publishes one validated GLB:
+
+```bash
+python -m production.run_video_to_glb \
+  --video /input/capture.mov \
+  --job-root /jobs/123 \
+  --output /jobs/123/result/face.glb \
+  --physical-gpu 1
+```
+
+The production defaults use the full 30,000-iteration 2DGS reconstruction, mesh
+resolution 1024, one retained mesh component, canonical face cleanup, xatlas UVs,
+and 301 texture iterations. Add `--resume` to reuse stages whose configuration and
+recorded outputs still match. Use `--dry-run` to print the complete JSON stage plan
+without touching the filesystem or CUDA.
+
+The required product is the requested GLB. A sibling `result.json` contains its hash,
+size, and quality report. Intermediate geometry, UV files, texture, and diagnostics
+are stored below `<job-root>/artifacts`; native STFR outputs are below
+`<job-root>/workspace`.
+
 An fully-automatic and efficient pipeline to reconstruct topologically-consistent 3D facial geometry (with texture) from a smartphone-captured video.
 
 This code has been used in many of my research projects, including:
