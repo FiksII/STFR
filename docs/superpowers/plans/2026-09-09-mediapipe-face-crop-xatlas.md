@@ -58,8 +58,8 @@ Expected: FAIL because `production.face_crop_stage` does not exist.
 ```python
 @dataclass(frozen=True)
 class FaceCropConfig:
-    oval_scale: float = 1.15
-    adjacency_rings: int = 2
+    oval_scale: float = 1.0
+    adjacency_rings: int = 0
     minimum_detected_frames: int = 3
     minimum_selected_faces: int = 10_000
 

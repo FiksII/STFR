@@ -59,8 +59,8 @@ FACE_OVAL_INDICES = np.array(
 
 @dataclass(frozen=True)
 class FaceCropConfig:
-    oval_scale: float = 1.15
-    adjacency_rings: int = 2
+    oval_scale: float = 1.0
+    adjacency_rings: int = 0
     minimum_detected_frames: int = 3
     minimum_selected_faces: int = 10_000
 
@@ -360,8 +360,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--oval-scale", type=float, default=1.15)
-    parser.add_argument("--adjacency-rings", type=int, default=2)
+    parser.add_argument("--oval-scale", type=float, default=1.0)
+    parser.add_argument("--adjacency-rings", type=int, default=0)
     parser.add_argument("--minimum-detected-frames", type=int, default=3)
     parser.add_argument("--minimum-selected-faces", type=int, default=10_000)
     args = parser.parse_args()

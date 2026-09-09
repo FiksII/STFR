@@ -17,6 +17,13 @@ from production.face_crop_stage import (
 )
 
 
+def test_production_crop_defaults_do_not_expand_beyond_face_oval() -> None:
+    config = FaceCropConfig()
+
+    assert config.oval_scale == 1.0
+    assert config.adjacency_rings == 0
+
+
 def test_padded_face_oval_mask_expands_about_landmark_center() -> None:
     landmarks = np.array(
         [[4.0, 4.0], [6.0, 4.0], [6.0, 6.0], [4.0, 6.0]],

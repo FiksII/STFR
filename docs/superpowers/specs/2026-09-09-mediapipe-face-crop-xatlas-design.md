@@ -10,12 +10,13 @@ resumed from the geometry stage without retraining.
 ## Pipeline
 
 1. Reconstruct `2dgs_recon.obj` and select 16 sharp registered frames as today.
-2. Run MediaPipe Face Mesh on each selected frame and build a padded face-oval
-   mask for every successful detection.
+2. Run MediaPipe Face Mesh on each selected frame and build a face-oval mask for
+   every successful detection. Optional padding remains configurable but defaults
+   to no expansion because the measured 5% expansion retained non-face fragments.
 3. Rasterize the original 2DGS mesh with the matching COLMAP camera. Collect only
    the visible triangle IDs whose pixels fall inside the face mask.
-4. Union the triangle IDs across views, expand the selection by a small number of
-   face-adjacency rings, and keep the largest connected component.
+4. Union the triangle IDs across views and keep the largest connected component.
+   Optional face-adjacency expansion remains configurable and defaults to zero.
 5. Apply three low-displacement Taubin smoothing iterations to the cropped mesh.
 6. Generate non-overlapping UV islands with `xatlas`, optimize the 1024x1024
    texture for 301 iterations, export the Y-up GLB, and run the existing asset

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import trimesh
 from trimesh.smoothing import filter_taubin
 
@@ -44,6 +45,36 @@ def test_cleanup_keeps_largest_2dgs_component_in_source_coordinates(
         [-1.0, -1.0, 1.0, 1.0]
     ).tolist()
     assert "mask_faces_before_closing" not in report
+
+
+def test_cleanup_does_not_materialize_every_split_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = trimesh.util.concatenate(
+        (trimesh.creation.icosphere(subdivisions=1), trimesh.creation.box())
+    )
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "clean.ply"
+    source.export(source_path)
+
+    def reject_split(*args, **kwargs):
+        raise AssertionError("Trimesh.split duplicates every component")
+
+    monkeypatch.setattr(trimesh.Trimesh, "split", reject_split)
+
+    report = clean_face_mesh(
+        source_path,
+        output_path,
+        CleanupConfig(
+            smooth_iterations=0,
+            minimum_faces=1,
+            minimum_largest_component_fraction=0.1,
+            maximum_roughness_p90_degrees=180.0,
+        ),
+    )
+
+    assert report["output_faces"] == max(80, 12)
 
 
 def test_cleanup_does_not_repair_holes_or_add_triangles(tmp_path: Path) -> None:

@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 import trimesh
 from trimesh.smoothing import filter_taubin
 
@@ -51,6 +53,33 @@ def roughness_percentiles(mesh: trimesh.Trimesh) -> dict[str, float]:
     return {"median": float(median), "p90": float(p90), "p99": float(p99)}
 
 
+def largest_face_component(
+    mesh: trimesh.Trimesh,
+) -> tuple[trimesh.Trimesh, list[int]]:
+    face_count = len(mesh.faces)
+    if face_count == 0:
+        raise ValueError("2DGS mesh has no triangle faces")
+    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    if len(adjacency):
+        rows = np.concatenate((adjacency[:, 0], adjacency[:, 1]))
+        columns = np.concatenate((adjacency[:, 1], adjacency[:, 0]))
+        graph = coo_matrix(
+            (np.ones(len(rows), dtype=np.uint8), (rows, columns)),
+            shape=(face_count, face_count),
+        ).tocsr()
+        _, labels = connected_components(graph, directed=False)
+    else:
+        labels = np.arange(face_count, dtype=np.int64)
+    counts = np.bincount(labels)
+    largest_label = int(np.argmax(counts))
+    largest_indices = np.flatnonzero(labels == largest_label)
+    if len(largest_indices) == face_count:
+        largest = mesh
+    else:
+        largest = mesh.submesh([largest_indices], append=True, repair=False)
+    return largest, sorted(counts.astype(int).tolist(), reverse=True)
+
+
 def clean_face_mesh(
     source_path: Path,
     output_path: Path,
@@ -63,13 +92,7 @@ def clean_face_mesh(
     cleaned_input.update_faces(cleaned_input.unique_faces())
     cleaned_input.remove_unreferenced_vertices()
 
-    components = list(cleaned_input.split(only_watertight=False, repair=False))
-    if not components:
-        raise ValueError("2DGS mesh has no connected triangle components")
-    component_face_counts = sorted(
-        (len(component.faces) for component in components), reverse=True
-    )
-    cleaned = max(components, key=lambda component: len(component.faces))
+    cleaned, component_face_counts = largest_face_component(cleaned_input)
     if len(cleaned.faces) < config.minimum_faces:
         raise ValueError(
             f"Largest component has {len(cleaned.faces)} triangles, fewer than "
