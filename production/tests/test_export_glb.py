@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -5,7 +6,7 @@ from PIL import Image
 import trimesh
 
 from production.clean_face_mesh import transform_points
-from production.export_glb import export_canonical_asset
+from production.export_glb import export_canonical_asset, load_output_transform
 from production.unwrap_2dgs_uv import write_mtl, write_obj
 
 
@@ -56,3 +57,16 @@ def test_export_writes_vertex_color_ply(tmp_path: Path) -> None:
     loaded = trimesh.load_mesh(report["vertex_color_ply"], process=False)
     assert loaded.visual.kind == "vertex"
     assert len(loaded.visual.vertex_colors) == len(loaded.vertices)
+
+
+def test_load_output_transform_uses_direct_cleanup_report_key(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "geometry-report.json"
+    matrix = np.eye(4).tolist()
+    report.write_text(
+        json.dumps({"source_to_output_row_matrix": matrix}),
+        encoding="utf-8",
+    )
+
+    np.testing.assert_array_equal(load_output_transform(report), np.eye(4))

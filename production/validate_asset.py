@@ -8,7 +8,10 @@ import numpy as np
 from PIL import Image
 import trimesh
 
-from production.unwrap_2dgs_uv import load_triangle_mesh
+from production.unwrap_2dgs_uv import (
+    load_triangle_mesh,
+    validate_cube_uv_padding,
+)
 
 
 def validate_asset(
@@ -17,7 +20,10 @@ def validate_asset(
     texture_path: Path,
     glb_path: Path,
     expected_texture_size: tuple[int, int] = (1024, 1024),
+    uv_padding_pixels: int = 2,
 ) -> dict:
+    if expected_texture_size[0] != expected_texture_size[1]:
+        raise ValueError("Cube UV validation requires a square texture")
     source = load_triangle_mesh(source_path)
     textured = load_triangle_mesh(obj_path)
     texture = Image.open(texture_path).convert("RGB")
@@ -29,7 +35,7 @@ def validate_asset(
     if len(source.faces) != len(textured.faces):
         raise ValueError("UV export changed the triangle count")
     if not np.allclose(source.bounds, textured.bounds, atol=1e-6):
-        raise ValueError("Canonical export changed geometry bounds")
+        raise ValueError("UV export changed geometry bounds")
     if textured.visual.kind != "texture":
         raise ValueError(f"Expected texture visuals, got {textured.visual.kind}")
     if textured.visual.uv.shape != (len(textured.vertices), 2):
@@ -38,6 +44,11 @@ def validate_asset(
         raise ValueError("UV coordinates contain non-finite values")
     if textured.visual.uv.min() < -1e-6 or textured.visual.uv.max() > 1.0 + 1e-6:
         raise ValueError("UV coordinates are outside [0, 1]")
+    validate_cube_uv_padding(
+        textured.visual.uv,
+        atlas_size=expected_texture_size[0],
+        padding_pixels=uv_padding_pixels,
+    )
     if texture.size != expected_texture_size:
         raise ValueError(f"Unexpected texture size: {texture.size}")
     if float(pixels.std()) < 5.0:
@@ -64,6 +75,8 @@ def validate_asset(
         "textured_vertices": int(len(textured.vertices)),
         "textured_faces": int(len(textured.faces)),
         "visual_kind": textured.visual.kind,
+        "uv_method": "cube",
+        "uv_padding_pixels": uv_padding_pixels,
         "uv_min": textured.visual.uv.min(axis=0).astype(float).tolist(),
         "uv_max": textured.visual.uv.max(axis=0).astype(float).tolist(),
         "texture_size": list(texture.size),
@@ -77,7 +90,7 @@ def validate_asset(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate a canonical STFR face asset.")
+    parser = argparse.ArgumentParser(description="Validate a direct textured STFR face asset.")
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--obj", type=Path, required=True)
     parser.add_argument("--texture", type=Path, required=True)

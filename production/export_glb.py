@@ -59,6 +59,11 @@ def write_rebound_mtl(input_mtl: Path, output_mtl: Path, texture_name: str) -> N
     output_mtl.write_text("\n".join(output_lines) + "\n", encoding="ascii")
 
 
+def load_output_transform(report_path: Path) -> np.ndarray:
+    cleanup = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    return np.asarray(cleanup["source_to_output_row_matrix"], dtype=np.float64)
+
+
 def export_canonical_asset(
     input_obj: Path,
     input_mtl: Path,
@@ -80,7 +85,7 @@ def export_canonical_asset(
     shutil.copy2(texture, output_texture)
     scene = trimesh.load(output_obj, process=False, force="scene")
     if not scene.geometry:
-        raise ValueError("Canonical OBJ contains no geometry")
+        raise ValueError("Output OBJ contains no geometry")
     scene.export(output_glb)
     combined = trimesh.util.concatenate(tuple(scene.geometry.values()))
     combined.visual = combined.visual.to_color()
@@ -103,7 +108,7 @@ def export_canonical_asset(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export a canonical textured STFR face.")
+    parser = argparse.ArgumentParser(description="Export a direct textured STFR face.")
     parser.add_argument("--input-obj", type=Path, required=True)
     parser.add_argument("--input-mtl", type=Path, required=True)
     parser.add_argument("--texture", type=Path, required=True)
@@ -111,12 +116,11 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--stem", default="face")
     args = parser.parse_args()
-    cleanup = json.loads(args.clean_report.read_text(encoding="utf-8"))
     report = export_canonical_asset(
         args.input_obj,
         args.input_mtl,
         args.texture,
-        np.asarray(cleanup["source_to_canonical_row_matrix"], dtype=np.float64),
+        load_output_transform(args.clean_report),
         args.output_dir,
         args.stem,
     )

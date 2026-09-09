@@ -263,7 +263,11 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         validation_report_path = artifacts / "validation-report.json"
-        validation_config = {"texture_size": [1024, 1024]}
+        validation_config = {
+            "texture_size": [texture_config.atlas_size, texture_config.atlas_size],
+            "uv_method": texture_config.uv_method,
+            "uv_padding_pixels": texture_config.uv_padding_pixels,
+        }
 
         def validate_and_publish() -> dict:
             quality = validate_asset(
@@ -271,6 +275,8 @@ def main(argv: list[str] | None = None) -> int:
                 Path(export_report["obj"]),
                 Path(export_report["texture"]),
                 Path(export_report["glb"]),
+                expected_texture_size=(texture_config.atlas_size,) * 2,
+                uv_padding_pixels=texture_config.uv_padding_pixels,
             )
             return publish_validated_glb(Path(export_report["glb"]), output, quality)
 

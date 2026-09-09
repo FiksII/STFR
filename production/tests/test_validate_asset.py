@@ -10,7 +10,11 @@ from production.unwrap_2dgs_uv import write_mtl, write_obj
 from production.validate_asset import validate_asset
 
 
-def build_asset(tmp_path: Path, uniform: bool = False):
+def build_asset(
+    tmp_path: Path,
+    uniform: bool = False,
+    texture_size: int = 4,
+):
     vertices = np.array(
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64
     )
@@ -25,9 +29,10 @@ def build_asset(tmp_path: Path, uniform: bool = False):
     mtl = obj.with_suffix(".mtl")
     write_mtl(mtl, "face", "source.png")
     texture = tmp_path / "source.png"
-    pixels = np.full((4, 4, 3), 128, dtype=np.uint8)
+    pixels = np.full((texture_size, texture_size, 3), 128, dtype=np.uint8)
     if not uniform:
-        pixels[:2, :2] = (220, 80, 40)
+        split = max(texture_size // 2, 1)
+        pixels[:split, :split] = (220, 80, 40)
     Image.fromarray(pixels).save(texture)
     exported = export_canonical_asset(obj, mtl, texture, np.eye(4), tmp_path / "output")
     return source_path, exported
@@ -42,6 +47,7 @@ def test_validate_asset_accepts_reloadable_textured_glb(tmp_path: Path) -> None:
         Path(exported["texture"]),
         Path(exported["glb"]),
         expected_texture_size=(4, 4),
+        uv_padding_pixels=0,
     )
 
     assert report["source_faces"] == report["glb_faces"] == 4
@@ -59,4 +65,19 @@ def test_validate_asset_rejects_uniform_texture(tmp_path: Path) -> None:
             Path(exported["texture"]),
             Path(exported["glb"]),
             expected_texture_size=(4, 4),
+            uv_padding_pixels=0,
+        )
+
+
+def test_validate_asset_rejects_uv_on_cube_tile_edge(tmp_path: Path) -> None:
+    source, exported = build_asset(tmp_path, texture_size=12)
+
+    with pytest.raises(ValueError, match="tile padding"):
+        validate_asset(
+            source,
+            Path(exported["obj"]),
+            Path(exported["texture"]),
+            Path(exported["glb"]),
+            expected_texture_size=(12, 12),
+            uv_padding_pixels=1,
         )
