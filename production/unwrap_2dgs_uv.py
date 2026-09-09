@@ -210,14 +210,23 @@ def write_obj(
             handle.write(f"f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}\n")
 
 
+def _parametrize_with_xatlas(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    import xatlas
+
+    return xatlas.parametrize(
+        np.asarray(vertices, dtype=np.float32),
+        np.asarray(faces, dtype=np.uint32),
+    )
+
+
 def unwrap_mesh(
     input_path: Path,
     output_obj: Path,
     material_name: str = "face",
     texture_name: str = "uv.png",
-    *,
-    atlas_size: int = 1024,
-    padding_pixels: int = 2,
 ) -> dict[str, Any]:
     input_path = Path(input_path)
     output_obj = Path(output_obj)
@@ -228,44 +237,55 @@ def unwrap_mesh(
     if not np.isfinite(source_normals).all():
         raise ValueError("Mesh contains non-finite vertex normals")
 
-    atlas = build_cube_atlas(
+    vertex_mapping, atlas_faces, atlas_uvs = _parametrize_with_xatlas(
         source_vertices,
         source_faces,
-        atlas_size=atlas_size,
-        padding_pixels=padding_pixels,
     )
+    vertex_mapping = np.asarray(vertex_mapping, dtype=np.int64)
+    atlas_faces = np.asarray(atlas_faces, dtype=np.int64)
+    atlas_uvs = np.asarray(atlas_uvs, dtype=np.float32)
+    if vertex_mapping.ndim != 1 or not len(vertex_mapping):
+        raise ValueError("xatlas produced an invalid vertex mapping")
+    if vertex_mapping.min() < 0 or vertex_mapping.max() >= len(source_vertices):
+        raise ValueError("xatlas produced invalid source vertex indices")
+    if atlas_faces.shape != source_faces.shape:
+        raise ValueError("xatlas changed the triangle count or topology shape")
+    if atlas_faces.min() < 0 or atlas_faces.max() >= len(vertex_mapping):
+        raise ValueError("xatlas produced invalid face indices")
+    if atlas_uvs.shape != (len(vertex_mapping), 2):
+        raise ValueError("xatlas produced an invalid UV array")
+    if not np.isfinite(atlas_uvs).all():
+        raise ValueError("xatlas produced non-finite UV coordinates")
+    tolerance = 1e-6
+    if atlas_uvs.min() < -tolerance or atlas_uvs.max() > 1.0 + tolerance:
+        raise ValueError("xatlas produced UV coordinates outside [0, 1]")
+    atlas_uvs = np.clip(atlas_uvs, 0.0, 1.0)
 
     output_obj.parent.mkdir(parents=True, exist_ok=True)
     write_obj(
         output_obj,
-        source_vertices[atlas.vertex_mapping],
-        source_normals[atlas.vertex_mapping],
-        atlas.uvs,
-        atlas.faces,
+        source_vertices[vertex_mapping],
+        source_normals[vertex_mapping],
+        atlas_uvs,
+        atlas_faces,
         material_name,
     )
     write_mtl(output_obj.with_suffix(".mtl"), material_name, texture_name)
-    counts = np.bincount(atlas.face_charts, minlength=len(CHART_NAMES))
     referenced_source_vertices = len(np.unique(source_faces))
     return {
-        "method": "cube",
-        "atlas_size": atlas_size,
-        "padding_pixels": padding_pixels,
-        "chart_face_counts": dict(
-            zip(CHART_NAMES, counts.astype(int).tolist())
-        ),
+        "method": "xatlas",
         "source": str(input_path.resolve()),
         "output": str(output_obj.resolve()),
         "source_vertices": int(len(source_vertices)),
         "referenced_source_vertices": int(referenced_source_vertices),
-        "output_vertices": int(len(atlas.vertex_mapping)),
+        "output_vertices": int(len(vertex_mapping)),
         "duplicated_seam_vertices": int(
-            len(atlas.vertex_mapping) - referenced_source_vertices
+            len(vertex_mapping) - referenced_source_vertices
         ),
         "source_faces": int(len(source_faces)),
-        "output_faces": int(len(atlas.faces)),
-        "uv_min": atlas.uvs.min(axis=0).astype(float).tolist(),
-        "uv_max": atlas.uvs.max(axis=0).astype(float).tolist(),
+        "output_faces": int(len(atlas_faces)),
+        "uv_min": atlas_uvs.min(axis=0).astype(float).tolist(),
+        "uv_max": atlas_uvs.max(axis=0).astype(float).tolist(),
         "bounds_min": source_vertices.min(axis=0).astype(float).tolist(),
         "bounds_max": source_vertices.max(axis=0).astype(float).tolist(),
         "material": material_name,
@@ -275,14 +295,12 @@ def unwrap_mesh(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Create deterministic cube UVs for a cleaned STFR 2DGS mesh."
+        description="Create an xatlas UV layout for a cleaned STFR 2DGS mesh."
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--material", default="face")
     parser.add_argument("--texture", default="uv.png")
-    parser.add_argument("--atlas-size", type=int, default=1024)
-    parser.add_argument("--padding-pixels", type=int, default=2)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     report = unwrap_mesh(
@@ -290,8 +308,6 @@ def main() -> None:
         args.output,
         args.material,
         args.texture,
-        atlas_size=args.atlas_size,
-        padding_pixels=args.padding_pixels,
     )
     report_path = args.report or args.output.with_suffix(".uv-report.json")
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

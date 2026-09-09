@@ -137,10 +137,10 @@ ldd "$(command -v colmap)" | grep -E 'cuda|cudart'
 ## Production external assets
 
 Faceform Wrap is not required by the production video-to-GLB entry point. The
-production path keeps the largest connected component of `2dgs_recon.obj` in
-its reconstructed coordinates and sends that mesh through deterministic cube UV
-projection and texture optimization. xatlas is not required by the production
-entry point. Texture training bounds only the LPIPS input to a 512-pixel long
+production path uses MediaPipe face landmarks and the COLMAP cameras to retain
+visible facial triangles from `2dgs_recon.obj`, then uses non-overlapping xatlas UV
+islands for texture optimization. `xatlas==0.0.11` is installed by the frozen uv
+environment. Texture training bounds only the LPIPS input to a 512-pixel long
 edge; its UV output and geometry-aware L1 loss remain full-resolution. Export
 applies a 180-degree proper rotation around Z so the GLB is Y-up without
 mirroring. The upstream registration scripts remain in the repository only as a

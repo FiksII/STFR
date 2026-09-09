@@ -99,9 +99,8 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
     mesh.write_bytes(b"bbbb")
     second = build_texture_resume_config(config)
 
-    assert first["uv_method"] == second["uv_method"] == "cube"
+    assert first["uv_method"] == second["uv_method"] == "xatlas"
     assert first["atlas_size"] == second["atlas_size"] == 1024
-    assert first["uv_padding_pixels"] == second["uv_padding_pixels"] == 2
     assert first["lpips_max_size"] == second["lpips_max_size"] == 512
     assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
 
@@ -132,8 +131,13 @@ def test_validation_fingerprint_tracks_same_size_staged_glb_changes(
     clean_mesh.write_bytes(b"mesh")
     staged_glb.write_bytes(b"aaaa")
 
-    first = pipeline.build_validation_resume_config(clean_mesh, staged_glb, 1024, 2)
+    first = pipeline.build_validation_resume_config(
+        clean_mesh, staged_glb, 1024, "xatlas"
+    )
     staged_glb.write_bytes(b"bbbb")
-    second = pipeline.build_validation_resume_config(clean_mesh, staged_glb, 1024, 2)
+    second = pipeline.build_validation_resume_config(
+        clean_mesh, staged_glb, 1024, "xatlas"
+    )
 
     assert first["staged_glb_sha256"] != second["staged_glb_sha256"]
+    assert first["uv_method"] == second["uv_method"] == "xatlas"

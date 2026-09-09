@@ -12,6 +12,26 @@ from production.unwrap_2dgs_uv import (
 )
 
 
+@pytest.fixture
+def fake_xatlas(monkeypatch: pytest.MonkeyPatch) -> None:
+    def parametrize(
+        vertices: np.ndarray,
+        faces: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        mapping = np.arange(len(vertices), dtype=np.int64)
+        uvs = np.array(
+            [[0.05, 0.05], [0.95, 0.05], [0.05, 0.95], [0.95, 0.95]],
+            dtype=np.float32,
+        )
+        return mapping, np.asarray(faces, dtype=np.int64), uvs[: len(vertices)]
+
+    monkeypatch.setattr(
+        "production.unwrap_2dgs_uv._parametrize_with_xatlas",
+        parametrize,
+        raising=False,
+    )
+
+
 def make_asymmetric_tetrahedron(path: Path) -> Path:
     mesh = trimesh.Trimesh(
         vertices=np.array(
@@ -131,10 +151,10 @@ def test_cube_atlas_rejects_invalid_arrays(
 def test_unwrap_copies_source_normals_to_every_seam_vertex(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fake_xatlas: None,
 ) -> None:
     source_path = make_asymmetric_tetrahedron(tmp_path / "source.obj")
     source = trimesh.load_mesh(source_path, process=False)
-    atlas = build_cube_atlas(source.vertices, source.faces)
     captured: dict[str, np.ndarray] = {}
 
     def capture_obj(
@@ -152,11 +172,14 @@ def test_unwrap_copies_source_normals_to_every_seam_vertex(
 
     np.testing.assert_allclose(
         captured["normals"],
-        np.asarray(source.vertex_normals)[atlas.vertex_mapping],
+        np.asarray(source.vertex_normals),
     )
 
 
-def test_unwrap_preserves_triangle_geometry(tmp_path: Path) -> None:
+def test_unwrap_preserves_triangle_geometry(
+    tmp_path: Path,
+    fake_xatlas: None,
+) -> None:
     source = make_asymmetric_tetrahedron(tmp_path / "source.obj")
     output = tmp_path / "face.obj"
 
@@ -165,14 +188,14 @@ def test_unwrap_preserves_triangle_geometry(tmp_path: Path) -> None:
     result = trimesh.load_mesh(output, process=False)
 
     assert report["source_faces"] == report["output_faces"] == 4
-    assert report["method"] == "cube"
-    assert report["atlas_size"] == 1024
-    assert report["padding_pixels"] == 2
-    assert set(report["chart_face_counts"]) == set(CHART_NAMES)
+    assert report["method"] == "xatlas"
     assert canonical_triangles(result) == canonical_triangles(source_mesh)
 
 
-def test_unwrap_binds_texture_and_writes_finite_uvs(tmp_path: Path) -> None:
+def test_unwrap_binds_texture_and_writes_finite_uvs(
+    tmp_path: Path,
+    fake_xatlas: None,
+) -> None:
     source = make_asymmetric_tetrahedron(tmp_path / "source.obj")
     output = tmp_path / "face.obj"
 

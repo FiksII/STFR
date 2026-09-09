@@ -15,10 +15,10 @@ uv run python -m production.run_video_to_glb \
 ```
 
 The production defaults use the full 30,000-iteration 2DGS reconstruction, mesh
-resolution 1024, direct largest-component cleanup in reconstructed coordinates,
-20 volume-preserving Laplacian smoothing passes, deterministic cube UVs with
-two-pixel chart padding, and 301 texture iterations. The production entry point
-does not run FLAME registration or Faceform Wrap. LPIPS is evaluated at a bounded
+resolution 1024, MediaPipe-guided visible-face cropping in reconstructed
+coordinates, three low-displacement Taubin smoothing passes, non-overlapping
+xatlas UV islands, and 301 texture iterations. The production entry point does
+not run FLAME registration or Faceform Wrap. LPIPS is evaluated at a bounded
 512-pixel long edge while the UV texture and geometry-aware L1 loss remain at full
 resolution. The final asset is rotated into glTF Y-up coordinates. Add `--resume`
 to reuse stages whose configuration, input hashes, and recorded outputs still

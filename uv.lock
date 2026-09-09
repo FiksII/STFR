@@ -1426,6 +1426,7 @@ dependencies = [
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "wheel" },
+    { name = "xatlas" },
     { name = "yacs" },
 ]
 
@@ -1470,6 +1471,7 @@ requires-dist = [
     { name = "tqdm", specifier = "==4.70.0" },
     { name = "trimesh", specifier = "==5.1.0" },
     { name = "wheel", specifier = "==0.48.0" },
+    { name = "xatlas", specifier = "==0.0.11" },
     { name = "yacs", specifier = "==0.1.8" },
 ]
 
@@ -1741,6 +1743,17 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d0/20/50ed6bdf27dec98b568a8ae25dc599f35baa3d9709f9e83fd1edb56b9a90/wheel-0.48.0.tar.gz", hash = "sha256:94800765601e9171bf5d58d066e640662842bcedcbab982b2c90787a2c987322", size = 66471, upload-time = "2026-08-11T22:02:27.327Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2e/29/69cfbb602cd91690c55d38ba9fe53e6a7e76a6fa647bf38f19c138d25449/wheel-0.48.0-py3-none-any.whl", hash = "sha256:3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab", size = 33320, upload-time = "2026-08-11T22:02:26.1Z" },
+]
+
+[[package]]
+name = "xatlas"
+version = "0.0.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/fe/32adb4dbdf5485c185de9b62b83d434f12ca5be8a000d9882c871808987b/xatlas-0.0.11.tar.gz", hash = "sha256:72f0bc6c42c19252be87e947d9dfe251c8d6c6943fd43e3d173ddc6b1afad693", size = 7718208, upload-time = "2025-07-04T16:46:43.315Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/6b/faefe42f007abc2e3ea94d16e74577837106842711fddd2c1dce0a26af6b/xatlas-0.0.11-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dc1eefc14b69bf9ae4a529809cf9ceca50c45b87f2fff5220a80291b3ff2e3f0", size = 261604, upload-time = "2025-07-04T16:45:25.109Z" },
+    { url = "https://files.pythonhosted.org/packages/45/6f/1744898c8096fd1c91950e8b5d19244d88acb92dbaa9d4d579e9ea304518/xatlas-0.0.11-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:f7643d17f9c75f37a82c497e94ee280455a7e72246da600ac30df8abc69dc774", size = 1287993, upload-time = "2025-07-04T16:45:27.683Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/24/cafe4af289301c84e194165bb4ae10014cc40fca2430ef2987bff968d169/xatlas-0.0.11-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c6ac223ffc49167b553ff7e81af7b8b5a14a73d5b9e98789821511483b4cdee9", size = 262002, upload-time = "2025-07-04T16:46:21.107Z" },
 ]
 
 [[package]]

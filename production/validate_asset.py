@@ -9,10 +9,7 @@ from PIL import Image
 import trimesh
 
 from production.clean_face_mesh import transform_points
-from production.unwrap_2dgs_uv import (
-    load_triangle_mesh,
-    validate_cube_uv_padding,
-)
+from production.unwrap_2dgs_uv import load_triangle_mesh
 
 
 def validate_asset(
@@ -21,11 +18,11 @@ def validate_asset(
     texture_path: Path,
     glb_path: Path,
     expected_texture_size: tuple[int, int] = (1024, 1024),
-    uv_padding_pixels: int = 2,
+    uv_method: str = "xatlas",
     source_to_output_matrix: np.ndarray | None = None,
 ) -> dict:
-    if expected_texture_size[0] != expected_texture_size[1]:
-        raise ValueError("Cube UV validation requires a square texture")
+    if uv_method != "xatlas":
+        raise ValueError(f"Unsupported production UV method: {uv_method}")
     source = load_triangle_mesh(source_path)
     textured = load_triangle_mesh(obj_path)
     matrix = (
@@ -55,11 +52,6 @@ def validate_asset(
         raise ValueError("UV coordinates contain non-finite values")
     if textured.visual.uv.min() < -1e-6 or textured.visual.uv.max() > 1.0 + 1e-6:
         raise ValueError("UV coordinates are outside [0, 1]")
-    validate_cube_uv_padding(
-        textured.visual.uv,
-        atlas_size=expected_texture_size[0],
-        padding_pixels=uv_padding_pixels,
-    )
     if texture.size != expected_texture_size:
         raise ValueError(f"Unexpected texture size: {texture.size}")
     if float(pixels.std()) < 5.0:
@@ -86,8 +78,7 @@ def validate_asset(
         "textured_vertices": int(len(textured.vertices)),
         "textured_faces": int(len(textured.faces)),
         "visual_kind": textured.visual.kind,
-        "uv_method": "cube",
-        "uv_padding_pixels": uv_padding_pixels,
+        "uv_method": uv_method,
         "uv_min": textured.visual.uv.min(axis=0).astype(float).tolist(),
         "uv_max": textured.visual.uv.max(axis=0).astype(float).tolist(),
         "texture_size": list(texture.size),

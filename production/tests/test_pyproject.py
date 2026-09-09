@@ -35,7 +35,7 @@ def test_uv_manifest_pins_the_tested_linux_cuda_environment() -> None:
     assert "numpy==1.26.4" in dependencies
     assert "pip==25.3" in dependencies
     assert "pymeshlab==2025.7" not in dependencies
-    assert not any(dependency.startswith("xatlas") for dependency in dependencies)
+    assert "xatlas==0.0.11" in dependencies
     assert "wheel==0.48.0" in dependencies
     assert not {
         "chumpy",
@@ -93,8 +93,8 @@ def test_agents_documents_non_python_production_dependencies() -> None:
     ):
         assert verification_command in instructions
     assert "Faceform Wrap is not required" in instructions
-    assert "deterministic cube UV" in instructions
-    assert "xatlas is not required" in instructions
+    assert "xatlas UV" in instructions
+    assert "xatlas==0.0.11" in instructions
     assert "registration/wrap/" not in instructions
     assert "export CUDA_HOME=/usr" in instruction_lines
     assert instructions.index("export CUDA_HOME=/usr") < instructions.index(

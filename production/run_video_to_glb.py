@@ -77,12 +77,11 @@ def build_validation_resume_config(
     clean_geometry: Path,
     staged_glb: Path,
     atlas_size: int,
-    uv_padding_pixels: int,
+    uv_method: str,
 ) -> dict:
     return {
         "texture_size": [atlas_size, atlas_size],
-        "uv_method": "cube",
-        "uv_padding_pixels": uv_padding_pixels,
+        "uv_method": uv_method,
         "clean_geometry_sha256": file_sha256(clean_geometry),
         "staged_glb_sha256": file_sha256(staged_glb),
     }
@@ -297,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
             clean_geometry,
             Path(export_report["glb"]),
             texture_config.atlas_size,
-            texture_config.uv_padding_pixels,
+            texture_config.uv_method,
         )
 
         def validate_and_publish() -> dict:
@@ -307,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 Path(export_report["texture"]),
                 Path(export_report["glb"]),
                 expected_texture_size=(texture_config.atlas_size,) * 2,
-                uv_padding_pixels=texture_config.uv_padding_pixels,
+                uv_method=texture_config.uv_method,
                 source_to_output_matrix=np.asarray(
                     clean_report["source_to_output_row_matrix"],
                     dtype=np.float64,

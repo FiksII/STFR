@@ -38,6 +38,7 @@ dependencies = [
     "tqdm==4.70.0",
     "trimesh==5.1.0",
     "wheel==0.48.0",
+    "xatlas==0.0.11",
     "yacs==0.1.8",
 ]
 

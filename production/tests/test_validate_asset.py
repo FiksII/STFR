@@ -54,7 +54,7 @@ def test_validate_asset_accepts_reloadable_textured_glb(tmp_path: Path) -> None:
         Path(exported["texture"]),
         Path(exported["glb"]),
         expected_texture_size=(4, 4),
-        uv_padding_pixels=0,
+        uv_method="xatlas",
     )
 
     assert report["source_faces"] == report["glb_faces"] == 4
@@ -72,21 +72,7 @@ def test_validate_asset_rejects_uniform_texture(tmp_path: Path) -> None:
             Path(exported["texture"]),
             Path(exported["glb"]),
             expected_texture_size=(4, 4),
-            uv_padding_pixels=0,
-        )
-
-
-def test_validate_asset_rejects_uv_on_cube_tile_edge(tmp_path: Path) -> None:
-    source, exported = build_asset(tmp_path, texture_size=12)
-
-    with pytest.raises(ValueError, match="tile padding"):
-        validate_asset(
-            source,
-            Path(exported["obj"]),
-            Path(exported["texture"]),
-            Path(exported["glb"]),
-            expected_texture_size=(12, 12),
-            uv_padding_pixels=1,
+            uv_method="xatlas",
         )
 
 
@@ -102,8 +88,9 @@ def test_validate_asset_compares_bounds_after_output_transform(
         Path(exported["texture"]),
         Path(exported["glb"]),
         expected_texture_size=(4, 4),
-        uv_padding_pixels=0,
+        uv_method="xatlas",
         source_to_output_matrix=matrix,
     )
 
     assert report["source_faces"] == report["glb_faces"] == 4
+    assert report["uv_method"] == "xatlas"

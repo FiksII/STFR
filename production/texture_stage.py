@@ -72,16 +72,9 @@ class TextureConfig:
     python: str = "python"
     physical_gpu: int = 1
     iterations: int = 301
-    uv_method: str = "cube"
+    uv_method: str = "xatlas"
     atlas_size: int = 1024
-    uv_padding_pixels: int = 2
     lpips_max_size: int = 512
-
-    def uv_options(self) -> dict[str, int]:
-        return {
-            "atlas_size": self.atlas_size,
-            "padding_pixels": self.uv_padding_pixels,
-        }
 
     def validate(self) -> None:
         if not self.source_mesh.is_file():
@@ -92,13 +85,10 @@ class TextureConfig:
             raise ValueError("Texture iterations must be positive")
         if self.lpips_max_size < 1:
             raise ValueError("LPIPS maximum size must be positive")
-        if self.uv_method != "cube":
-            raise ValueError("Production texture stage requires cube UVs")
-        if self.atlas_size < 1 or self.uv_padding_pixels < 0:
-            raise ValueError("Atlas size must be positive and padding non-negative")
-        pad = self.uv_padding_pixels / self.atlas_size
-        if 2.0 * pad >= 1.0 / 3.0:
-            raise ValueError("Padding leaves no usable cube-atlas tile area")
+        if self.uv_method != "xatlas":
+            raise ValueError("Production texture stage requires xatlas UVs")
+        if self.atlas_size < 1:
+            raise ValueError("Atlas size must be positive")
 
 
 def run_texture_stage(
@@ -118,7 +108,6 @@ def run_texture_stage(
         output_obj,
         "face",
         output_texture.name,
-        **config.uv_options(),
     )
     (output_root / "texture-prepare-report.json").write_text(
         json.dumps({"dataset": dataset_report, "uv": uv_report}, indent=2) + "\n",
