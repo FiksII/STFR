@@ -1,5 +1,9 @@
 # STFR Video-to-GLB Production Pipeline
 
+> Superseded for production by
+> `2026-09-09-direct-cube-uv-pipeline-design.md`. This document describes the
+> earlier Wrap/xatlas design and is retained only as design history.
+
 ## Goal
 
 Provide worker-callable scripts that accept one face video and publish one validated,
