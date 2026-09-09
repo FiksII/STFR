@@ -22,7 +22,6 @@ class ReconstructionConfig:
     mesh_res: int = 1024
     video_step_size: int = 10
     video_ds_ratio: float = 0.5
-    close_eye: int = 0
 
     def validate(self, require_input: bool = True) -> None:
         if self.iterations != PRODUCTION_ITERATIONS:
@@ -160,18 +159,6 @@ def build_reconstruction_commands(config: ReconstructionConfig) -> list[CommandS
             ),
             code_root / "refinement",
         ),
-        CommandSpec(
-            "registration",
-            (
-                config.python,
-                str(code_root / "registration" / "run_registration.py"),
-                "--data_root",
-                str(workspace),
-                "--close_eye",
-                str(config.close_eye),
-            ),
-            code_root / "registration",
-        ),
     ]
 
 
@@ -185,8 +172,6 @@ def required_reconstruction_outputs(config: ReconstructionConfig) -> list[Path]:
         / "point_cloud.ply",
         workspace / "2dgs_recon.obj",
         workspace / "transforms.json",
-        workspace / "register" / "fine_align" / "align_canonical.obj",
-        workspace / "register" / "wrap" / "final_hack.obj",
     ]
 
 

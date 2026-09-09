@@ -3,6 +3,7 @@ from pathlib import Path
 from production.reconstruction_stage import (
     ReconstructionConfig,
     build_reconstruction_commands,
+    required_reconstruction_outputs,
 )
 
 
@@ -50,5 +51,20 @@ def test_reconstruction_command_order_is_worker_stable(tmp_path: Path) -> None:
         "extract_mesh",
         "convert_mesh",
         "refinement",
-        "registration",
     ]
+
+
+def test_reconstruction_outputs_do_not_require_registration_or_wrap(
+    tmp_path: Path,
+) -> None:
+    config = ReconstructionConfig(
+        code_root=tmp_path / "code",
+        video_path=tmp_path / "capture.mov",
+        workspace_root=tmp_path / "workspace",
+    )
+
+    outputs = required_reconstruction_outputs(config)
+
+    assert config.workspace_root / "2dgs_recon.obj" in outputs
+    assert all("register" not in output.parts for output in outputs)
+    assert all(output.name != "final_hack.obj" for output in outputs)

@@ -2,53 +2,16 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from trimesh.smoothing import filter_laplacian
 
-from production.clean_face_mesh import (
-    CleanupConfig,
-    clean_face_mesh,
-    fit_correspondence_transform,
-    load_closed_reference,
-    transform_points,
-)
+from production.clean_face_mesh import CleanupConfig, clean_face_mesh
 
 
-def row_transform() -> np.ndarray:
-    return np.array(
-        [
-            [0.0, 2.0, 0.0, 0.0],
-            [-2.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 2.0, 0.0],
-            [1.0, -3.0, 4.0, 1.0],
-        ],
-        dtype=np.float64,
-    )
+def test_cleanup_defaults_to_measured_laplacian_pass_count() -> None:
+    assert CleanupConfig().smooth_iterations == 20
 
 
-def test_correspondence_recovers_affine_transform() -> None:
-    source = np.array(
-        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 2, 3]],
-        dtype=np.float64,
-    )
-    expected = row_transform()
-    target = transform_points(source, expected)
-
-    actual = fit_correspondence_transform(source, target)
-
-    assert np.allclose(actual, expected)
-
-
-def test_small_reference_holes_are_closed(tmp_path: Path) -> None:
-    reference = trimesh.creation.box()
-    reference.update_faces(np.arange(len(reference.faces)) != 0)
-    path = tmp_path / "reference.obj"
-    reference.export(path)
-
-    closed = load_closed_reference(path, max_hole_size=50)
-
-    assert len(closed.faces) > len(reference.faces)
-
-
-def test_cleanup_keeps_nearby_2dgs_component_and_reports_transform(
+def test_cleanup_keeps_largest_2dgs_component_in_source_coordinates(
     tmp_path: Path,
 ) -> None:
     face = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
@@ -57,37 +20,69 @@ def test_cleanup_keeps_nearby_2dgs_component_and_reports_transform(
         faces=np.array([[0, 1, 2]]),
         process=False,
     )
-    canonical = trimesh.util.concatenate((face, noise))
-    matrix = row_transform()
-    source = canonical.copy()
-    source.vertices = transform_points(source.vertices, np.linalg.inv(matrix))
+    source = trimesh.util.concatenate((face, noise))
     source_path = tmp_path / "source.ply"
-    canonical_path = tmp_path / "canonical.ply"
-    reference_path = tmp_path / "reference.ply"
-    output_source = tmp_path / "clean_source.ply"
-    output_canonical = tmp_path / "clean_canonical.ply"
+    output_path = tmp_path / "clean.ply"
     source.export(source_path)
-    canonical.export(canonical_path)
-    face.export(reference_path)
 
     report = clean_face_mesh(
         source_path,
-        canonical_path,
-        reference_path,
-        output_source,
-        output_canonical,
+        output_path,
         CleanupConfig(
-            distance=0.02,
             smooth_iterations=0,
-            mask_close_holes=0,
             minimum_faces=10,
             maximum_roughness_p90_degrees=180.0,
         ),
     )
 
-    cleaned = trimesh.load_mesh(output_canonical, process=False)
+    cleaned = trimesh.load_mesh(output_path, process=False)
     assert len(cleaned.faces) == len(face.faces)
-    assert report["selected_faces"] == len(face.faces)
-    assert report["component_face_counts"] == [len(face.faces)]
-    assert report["correspondence_residual_max"] < 1e-6
+    assert report["component_face_counts"] == [len(face.faces), len(noise.faces)]
     assert np.allclose(cleaned.bounds, face.bounds, atol=1e-6)
+    assert report["source_to_output_row_matrix"] == np.eye(4).tolist()
+    assert "mask_faces_before_closing" not in report
+
+
+def test_cleanup_does_not_repair_holes_or_add_triangles(tmp_path: Path) -> None:
+    source = trimesh.creation.box()
+    source.update_faces(np.arange(len(source.faces)) != 0)
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "clean.ply"
+    source.export(source_path)
+
+    report = clean_face_mesh(
+        source_path,
+        output_path,
+        CleanupConfig(
+            smooth_iterations=0,
+            minimum_faces=1,
+            maximum_roughness_p90_degrees=180.0,
+        ),
+    )
+
+    assert report["output_faces"] == len(source.faces)
+
+
+def test_cleanup_applies_volume_preserving_laplacian_smoothing(
+    tmp_path: Path,
+) -> None:
+    source = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
+    source.vertices[0] *= 1.75
+    source_path = tmp_path / "source.ply"
+    output_path = tmp_path / "clean.ply"
+    source.export(source_path)
+    expected = trimesh.load_mesh(source_path, process=False)
+    filter_laplacian(expected, lamb=0.2, iterations=2)
+
+    clean_face_mesh(
+        source_path,
+        output_path,
+        CleanupConfig(
+            smooth_iterations=2,
+            minimum_faces=10,
+            maximum_roughness_p90_degrees=180.0,
+        ),
+    )
+
+    actual = trimesh.load_mesh(output_path, process=False)
+    assert np.allclose(actual.vertices, expected.vertices, atol=1e-6)
