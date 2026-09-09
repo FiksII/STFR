@@ -15,6 +15,7 @@ import numpy as np
 
 from production.clean_face_mesh import CleanupConfig, clean_face_mesh
 from production.export_glb import export_canonical_asset
+from production.face_crop_stage import FaceCropConfig, crop_face_mesh
 from production.reconstruction_stage import (
     ReconstructionConfig,
     build_reconstruction_commands,
@@ -29,6 +30,7 @@ from production.validate_asset import validate_asset
 
 PIPELINE_STAGES = (
     "reconstruction",
+    "face_crop",
     "clean_geometry",
     "texture",
     "asset_export",
@@ -58,6 +60,25 @@ def build_texture_resume_config(config: TextureConfig) -> dict:
     payload = asdict(config)
     payload["source_mesh_sha256"] = file_sha256(config.source_mesh)
     return payload
+
+
+def build_face_crop_resume_config(
+    config: FaceCropConfig,
+    source_mesh: Path,
+    transforms_path: Path,
+    selected_frames_root: Path,
+) -> dict:
+    selected_frames = sorted(Path(selected_frames_root).glob("*.png"))
+    return {
+        **asdict(config),
+        "uv_input": "visible_2dgs_faces",
+        "source_mesh_sha256": file_sha256(Path(source_mesh)),
+        "transforms_sha256": file_sha256(Path(transforms_path)),
+        "selected_frames": [
+            {"name": frame.name, "sha256": file_sha256(frame)}
+            for frame in selected_frames
+        ],
+    }
 
 
 def build_asset_export_resume_config(
@@ -152,7 +173,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--video-step-size", type=int, default=10)
     parser.add_argument("--video-ds-ratio", type=float, default=0.5)
     parser.add_argument("--mesh-res", type=int, default=1024)
-    parser.add_argument("--smooth-iterations", type=int, default=20)
+    parser.add_argument("--face-oval-scale", type=float, default=1.15)
+    parser.add_argument("--face-adjacency-rings", type=int, default=2)
+    parser.add_argument("--smooth-iterations", type=int, default=3)
     parser.add_argument("--texture-iterations", type=int, default=301)
     parser.add_argument("--lpips-max-size", type=int, default=512)
     parser.add_argument("--resume", action="store_true")
@@ -180,6 +203,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     cleanup_config = CleanupConfig(
         smooth_iterations=args.smooth_iterations,
+    )
+    face_crop_config = FaceCropConfig(
+        oval_scale=args.face_oval_scale,
+        adjacency_rings=args.face_adjacency_rings,
     )
 
     if args.dry_run:
@@ -210,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
             "CUDA_VISIBLE_DEVICES": str(args.physical_gpu),
             "PYTHONPATH": str(code_root),
         }
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.physical_gpu)
 
         reconstruction_report_path = artifacts / "reconstruction-report.json"
         execute_stage(
@@ -222,15 +250,44 @@ def main(argv: list[str] | None = None) -> int:
             args.resume,
         )
 
+        face_crop_geometry = artifacts / "face_crop.ply"
+        face_crop_report_path = artifacts / "face-crop-report.json"
+        face_crop_resume_config = build_face_crop_resume_config(
+            face_crop_config,
+            workspace / "2dgs_recon.obj",
+            workspace / "transforms.json",
+            workspace / "refinement" / "sample" / "image",
+        )
+        execute_stage(
+            "face_crop",
+            face_crop_resume_config,
+            (face_crop_geometry,),
+            face_crop_report_path,
+            lambda: crop_face_mesh(
+                source_path=workspace / "2dgs_recon.obj",
+                selected_frames_root=workspace / "refinement" / "sample" / "image",
+                transforms_path=workspace / "transforms.json",
+                output_path=face_crop_geometry,
+                config=face_crop_config,
+                device="cuda:0",
+            ),
+            state,
+            args.resume,
+        )
+
         clean_geometry = artifacts / "face_geometry.ply"
         clean_report_path = artifacts / "geometry-report.json"
+        clean_resume_config = {
+            **asdict(cleanup_config),
+            "source_mesh_sha256": file_sha256(face_crop_geometry),
+        }
         clean_report = execute_stage(
             "clean_geometry",
-            asdict(cleanup_config),
+            clean_resume_config,
             (clean_geometry,),
             clean_report_path,
             lambda: clean_face_mesh(
-                workspace / "2dgs_recon.obj",
+                face_crop_geometry,
                 clean_geometry,
                 cleanup_config,
             ),

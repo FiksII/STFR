@@ -6,16 +6,19 @@ import numpy as np
 import production.run_video_to_glb as pipeline
 from production.run_video_to_glb import (
     PIPELINE_STAGES,
+    build_face_crop_resume_config,
     build_texture_resume_config,
     main,
     publish_validated_glb,
 )
+from production.face_crop_stage import FaceCropConfig
 from production.texture_stage import TextureConfig
 
 
-def test_pipeline_exports_direct_2dgs_mesh_without_canonical_registration() -> None:
+def test_pipeline_crops_direct_2dgs_mesh_without_canonical_registration() -> None:
     assert PIPELINE_STAGES == (
         "reconstruction",
+        "face_crop",
         "clean_geometry",
         "texture",
         "asset_export",
@@ -103,6 +106,30 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
     assert first["atlas_size"] == second["atlas_size"] == 1024
     assert first["lpips_max_size"] == second["lpips_max_size"] == 512
     assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
+
+
+def test_face_crop_resume_fingerprint_tracks_mesh_cameras_and_frames(
+    tmp_path: Path,
+) -> None:
+    mesh = tmp_path / "2dgs_recon.obj"
+    transforms = tmp_path / "transforms.json"
+    frames = tmp_path / "frames"
+    frames.mkdir()
+    frame = frames / "00001.png"
+    mesh.write_bytes(b"mesh-a")
+    transforms.write_bytes(b"cameras-a")
+    frame.write_bytes(b"frame-a")
+    config = FaceCropConfig()
+
+    first = build_face_crop_resume_config(config, mesh, transforms, frames)
+    frame.write_bytes(b"frame-b")
+    second = build_face_crop_resume_config(config, mesh, transforms, frames)
+    transforms.write_bytes(b"cameras-b")
+    third = build_face_crop_resume_config(config, mesh, transforms, frames)
+
+    assert first["uv_input"] == second["uv_input"] == "visible_2dgs_faces"
+    assert first["selected_frames"] != second["selected_frames"]
+    assert second["transforms_sha256"] != third["transforms_sha256"]
 
 
 def test_asset_export_fingerprint_tracks_same_size_texture_changes(
