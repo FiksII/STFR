@@ -2,13 +2,13 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from trimesh.smoothing import filter_laplacian
+from trimesh.smoothing import filter_taubin
 
 from production.clean_face_mesh import CleanupConfig, clean_face_mesh
 
 
-def test_cleanup_defaults_to_measured_laplacian_pass_count() -> None:
-    assert CleanupConfig().smooth_iterations == 20
+def test_cleanup_defaults_to_three_taubin_passes() -> None:
+    assert CleanupConfig().smooth_iterations == 3
     assert CleanupConfig().output_orientation == "gltf_y_up"
 
 
@@ -66,7 +66,7 @@ def test_cleanup_does_not_repair_holes_or_add_triangles(tmp_path: Path) -> None:
     assert report["output_faces"] == len(source.faces)
 
 
-def test_cleanup_applies_volume_preserving_laplacian_smoothing(
+def test_cleanup_applies_volume_preserving_taubin_smoothing(
     tmp_path: Path,
 ) -> None:
     source = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
@@ -75,7 +75,7 @@ def test_cleanup_applies_volume_preserving_laplacian_smoothing(
     output_path = tmp_path / "clean.ply"
     source.export(source_path)
     expected = trimesh.load_mesh(source_path, process=False)
-    filter_laplacian(expected, lamb=0.2, iterations=2)
+    filter_taubin(expected, lamb=0.2, nu=0.21, iterations=2)
 
     clean_face_mesh(
         source_path,

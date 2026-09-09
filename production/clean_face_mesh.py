@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from trimesh.smoothing import filter_laplacian
+from trimesh.smoothing import filter_taubin
 
 from production.unwrap_2dgs_uv import load_triangle_mesh
 
@@ -17,7 +17,7 @@ SOURCE_TO_GLTF_Y_UP_ROW_MATRIX = np.diag([-1.0, -1.0, 1.0, 1.0])
 
 @dataclass(frozen=True)
 class CleanupConfig:
-    smooth_iterations: int = 20
+    smooth_iterations: int = 3
     minimum_faces: int = 1000
     minimum_largest_component_fraction: float = 0.5
     maximum_roughness_p90_degrees: float = 30.0
@@ -83,9 +83,10 @@ def clean_face_mesh(
 
     before_smoothing = np.asarray(cleaned.vertices).copy()
     if config.smooth_iterations:
-        filter_laplacian(
+        filter_taubin(
             cleaned,
             lamb=0.2,
+            nu=0.21,
             iterations=config.smooth_iterations,
         )
 
@@ -127,7 +128,7 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--smooth-iterations", type=int, default=20)
+    parser.add_argument("--smooth-iterations", type=int, default=3)
     args = parser.parse_args()
     report = clean_face_mesh(
         args.source,
