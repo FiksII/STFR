@@ -31,7 +31,7 @@ PIPELINE_STAGES = (
     "reconstruction",
     "clean_geometry",
     "texture",
-    "canonical_export",
+    "asset_export",
     "validate_publish",
 )
 
@@ -52,6 +52,12 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def build_texture_resume_config(config: TextureConfig) -> dict:
+    payload = asdict(config)
+    payload["source_mesh_sha256"] = file_sha256(config.source_mesh)
+    return payload
 
 
 def publish_validated_glb(staged_glb: Path, output: Path, quality: dict) -> dict:
@@ -119,8 +125,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--video-step-size", type=int, default=10)
     parser.add_argument("--video-ds-ratio", type=float, default=0.5)
     parser.add_argument("--mesh-res", type=int, default=1024)
-    parser.add_argument("--face-distance", type=float, default=0.05)
-    parser.add_argument("--smooth-iterations", type=int, default=3)
+    parser.add_argument("--smooth-iterations", type=int, default=20)
     parser.add_argument("--texture-iterations", type=int, default=301)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -146,7 +151,6 @@ def main(argv: list[str] | None = None) -> int:
         video_ds_ratio=args.video_ds_ratio,
     )
     cleanup_config = CleanupConfig(
-        distance=args.face_distance,
         smooth_iterations=args.smooth_iterations,
     )
 
@@ -190,20 +194,16 @@ def main(argv: list[str] | None = None) -> int:
             args.resume,
         )
 
-        clean_source = artifacts / "face_source.ply"
-        clean_canonical = artifacts / "face_geometry.ply"
+        clean_geometry = artifacts / "face_geometry.ply"
         clean_report_path = artifacts / "geometry-report.json"
         clean_report = execute_stage(
             "clean_geometry",
             asdict(cleanup_config),
-            (clean_source, clean_canonical),
+            (clean_geometry,),
             clean_report_path,
             lambda: clean_face_mesh(
                 workspace / "2dgs_recon.obj",
-                workspace / "register" / "fine_align" / "align_canonical.obj",
-                workspace / "register" / "wrap" / "final_hack.obj",
-                clean_source,
-                clean_canonical,
+                clean_geometry,
                 cleanup_config,
             ),
             state,
@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         texture_config = TextureConfig(
             code_root=code_root,
             source_root=workspace,
-            source_mesh=clean_source,
+            source_mesh=clean_geometry,
             output_root=artifacts,
             python=args.python,
             physical_gpu=args.physical_gpu,
@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         texture_report_path = artifacts / "texture-report.json"
         texture_report = execute_stage(
             "texture",
-            asdict(texture_config),
+            build_texture_resume_config(texture_config),
             (
                 artifacts / "face_uv_source.obj",
                 artifacts / "face_uv_source.mtl",
@@ -234,14 +234,14 @@ def main(argv: list[str] | None = None) -> int:
             args.resume,
         )
 
-        export_root = artifacts / "canonical"
+        export_root = artifacts / "export"
         export_report_path = export_root / "export-report.json"
         export_config = {
-            "matrix": clean_report["source_to_canonical_row_matrix"],
+            "matrix": clean_report["source_to_output_row_matrix"],
             "stem": "face",
         }
         export_report = execute_stage(
-            "canonical_export",
+            "asset_export",
             export_config,
             (
                 export_root / "face.obj",
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                 Path(texture_report["obj"]),
                 Path(texture_report["mtl"]),
                 Path(texture_report["texture"]),
-                np.asarray(clean_report["source_to_canonical_row_matrix"], dtype=np.float64),
+                np.asarray(clean_report["source_to_output_row_matrix"], dtype=np.float64),
                 export_root,
             ),
             state,
@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
 
         def validate_and_publish() -> dict:
             quality = validate_asset(
-                clean_canonical,
+                clean_geometry,
                 Path(export_report["obj"]),
                 Path(export_report["texture"]),
                 Path(export_report["glb"]),

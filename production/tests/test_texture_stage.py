@@ -2,8 +2,9 @@ import json
 from pathlib import Path
 
 from PIL import Image
+import pytest
 
-from production.texture_stage import prepare_dataset
+from production.texture_stage import TextureConfig, prepare_dataset
 
 
 def test_prepare_dataset_keeps_only_refinement_frames(tmp_path: Path) -> None:
@@ -47,3 +48,32 @@ def test_prepare_dataset_keeps_only_refinement_frames(tmp_path: Path) -> None:
         "00001.png",
         "00003.png",
     ]
+
+
+def test_texture_config_exposes_production_cube_uv_options(tmp_path: Path) -> None:
+    mesh = tmp_path / "face.ply"
+    mesh.write_bytes(b"ply")
+    config = TextureConfig(tmp_path, tmp_path, mesh, tmp_path / "artifacts")
+
+    config.validate()
+
+    assert config.uv_method == "cube"
+    assert config.uv_options() == {"atlas_size": 1024, "padding_pixels": 2}
+
+
+def test_texture_config_rejects_padding_that_consumes_a_tile(
+    tmp_path: Path,
+) -> None:
+    mesh = tmp_path / "face.ply"
+    mesh.write_bytes(b"ply")
+    config = TextureConfig(
+        tmp_path,
+        tmp_path,
+        mesh,
+        tmp_path / "artifacts",
+        atlas_size=6,
+        uv_padding_pixels=1,
+    )
+
+    with pytest.raises(ValueError, match="no usable cube-atlas tile area"):
+        config.validate()

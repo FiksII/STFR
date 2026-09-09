@@ -3,9 +3,21 @@ from pathlib import Path
 
 from production.run_video_to_glb import (
     PIPELINE_STAGES,
+    build_texture_resume_config,
     main,
     publish_validated_glb,
 )
+from production.texture_stage import TextureConfig
+
+
+def test_pipeline_exports_direct_2dgs_mesh_without_canonical_registration() -> None:
+    assert PIPELINE_STAGES == (
+        "reconstruction",
+        "clean_geometry",
+        "texture",
+        "asset_export",
+        "validate_publish",
+    )
 
 
 def test_dry_run_lists_all_stages_without_touching_job_root(
@@ -71,3 +83,20 @@ def test_publish_uses_atomic_result_and_manifest(tmp_path: Path) -> None:
     assert stored["status"] == "complete"
     assert stored["quality"]["glb_faces"] == 123
     assert len(stored["sha256"]) == 64
+
+
+def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
+    tmp_path: Path,
+) -> None:
+    mesh = tmp_path / "face.ply"
+    mesh.write_bytes(b"aaaa")
+    config = TextureConfig(tmp_path, tmp_path, mesh, tmp_path / "artifacts")
+    first = build_texture_resume_config(config)
+
+    mesh.write_bytes(b"bbbb")
+    second = build_texture_resume_config(config)
+
+    assert first["uv_method"] == second["uv_method"] == "cube"
+    assert first["atlas_size"] == second["atlas_size"] == 1024
+    assert first["uv_padding_pixels"] == second["uv_padding_pixels"] == 2
+    assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
