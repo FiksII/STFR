@@ -8,12 +8,16 @@ parser.add_argument('--num_view', type=int, default=16)
 parser.add_argument('--syn', type=int, default=1)
 parser.add_argument('--vis_freq', type=int, default=50)
 parser.add_argument('--data_root', type=str, default="xxx")
+parser.add_argument('--mesh_path', type=str, default=None)
+parser.add_argument('--iterations', type=int, default=301)
 
 opt, _ = parser.parse_known_args()
+if opt.iterations < 1:
+    parser.error("--iterations must be positive")
 
 opt.meta_file_path = os.path.join(opt.data_root, "transforms.json")
 
-os.environ["CUDA_VISIBLE_DEVICES"] = opt.device
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", opt.device)
 
 
 import torch
@@ -255,7 +259,7 @@ class DiffusionSampler:
 
         self.mesh_renderer = MeshRenderer(self.device)
         data_root = os.path.dirname(opt.meta_file_path)
-        self.mesh_path = os.path.join(data_root, "final_hack.obj")
+        self.mesh_path = opt.mesh_path or os.path.join(data_root, "final_hack.obj")
         self._load_geometry(self.mesh_path)
 
         self.loss_weight_img = self.compute_loss_weight()
@@ -413,7 +417,7 @@ class DiffusionSampler:
         grad_scaler = torch.cuda.amp.GradScaler(2 ** 10)
         writer = SummaryWriter(self.log_dir)
         
-        for i in tqdm(range(151)):
+        for i in tqdm(range(opt.iterations)):
             for data in self.dataloader:
                 uv_shading = self.network().permute(0, 2, 3, 1).contiguous()
                 render = self.render_in_uv(data, uv_shading)
@@ -442,7 +446,7 @@ class DiffusionSampler:
 
                 writer.add_scalar('L1 Loss', loss_l1.item(), i)
 
-            if i % opt.vis_freq == 0:
+            if i % opt.vis_freq == 0 or i == opt.iterations - 1:
                 cur_log_dir = os.path.join(self.log_dir, "%05d" % i)
                 os.makedirs(cur_log_dir, exist_ok=True)
                 with torch.no_grad():
@@ -484,6 +488,7 @@ class DiffusionSampler:
                     print("[iter %05d][PSNR %.4f][SSIM %.4f][LPIPS %.4f]" % (
                         i, psnr_score, ssim_score, lpips_score,
                     ))
+        writer.close()
 
 
 if __name__ == "__main__":
