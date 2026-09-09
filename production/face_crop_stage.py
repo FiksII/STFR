@@ -64,6 +64,7 @@ class FaceCropConfig:
     oval_scale: float = 1.0
     adjacency_rings: int = 0
     maximum_hole_faces: int = 1000
+    opening_rings: int = 10
     minimum_detected_frames: int = 3
     minimum_selected_faces: int = 10_000
 
@@ -74,6 +75,8 @@ class FaceCropConfig:
             raise ValueError("Face adjacency rings cannot be negative")
         if self.maximum_hole_faces < 0:
             raise ValueError("Maximum hole faces cannot be negative")
+        if self.opening_rings < 0:
+            raise ValueError("Face opening rings cannot be negative")
         if self.minimum_detected_frames < 1:
             raise ValueError("Minimum detected frames must be positive")
         if self.minimum_selected_faces < 1:
@@ -294,6 +297,36 @@ def fill_small_face_gaps(
     }
 
 
+def open_face_selection(
+    selected: np.ndarray,
+    adjacency: np.ndarray,
+    rings: int,
+) -> np.ndarray:
+    original = np.asarray(selected, dtype=bool).copy()
+    pairs = np.asarray(adjacency, dtype=np.int64)
+    if original.ndim != 1:
+        raise ValueError("Selected face mask must be one-dimensional")
+    if pairs.ndim != 2 or pairs.shape[1] != 2:
+        raise ValueError("Face adjacency must have shape [N, 2]")
+    if rings < 0:
+        raise ValueError("Face opening rings cannot be negative")
+    if len(pairs) and (pairs.min() < 0 or pairs.max() >= len(original)):
+        raise ValueError("Face adjacency contains invalid indices")
+
+    eroded = original.copy()
+    for _ in range(rings):
+        border = eroded[pairs[:, 0]] != eroded[pairs[:, 1]]
+        border_pairs = pairs[border]
+        eroded[border_pairs[eroded[border_pairs]]] = False
+
+    opened = eroded
+    for _ in range(rings):
+        touching = opened[pairs[:, 0]] | opened[pairs[:, 1]]
+        opened[pairs[touching].reshape(-1)] = True
+        opened &= original
+    return opened
+
+
 Detector = Callable[[Path], np.ndarray | None]
 Rasterizer = Callable[[dict, tuple[int, int]], np.ndarray]
 
@@ -388,6 +421,17 @@ def crop_face_mesh(
         config.maximum_hole_faces,
     )
     selected_after_hole_fill = int(selected.sum())
+    selected = open_face_selection(
+        selected,
+        np.asarray(source.face_adjacency),
+        config.opening_rings,
+    )
+    selected_after_opening = int(selected.sum())
+    if selected_after_opening < config.minimum_selected_faces:
+        raise ValueError(
+            f"Face crop retained {selected_after_opening} faces after opening, "
+            f"fewer than the required {config.minimum_selected_faces}"
+        )
 
     cropped = source.submesh([np.flatnonzero(selected)], append=True, repair=False)
     if not isinstance(cropped, trimesh.Trimesh) or not len(cropped.faces):
@@ -402,6 +446,7 @@ def crop_face_mesh(
             "oval_scale": config.oval_scale,
             "adjacency_rings": config.adjacency_rings,
             "maximum_hole_faces": config.maximum_hole_faces,
+            "opening_rings": config.opening_rings,
             "minimum_detected_frames": config.minimum_detected_frames,
             "minimum_selected_faces": config.minimum_selected_faces,
         },
@@ -414,6 +459,7 @@ def crop_face_mesh(
         "selected_faces_before_expansion": selected_before_expansion,
         "selected_faces_after_expansion": selected_after_expansion,
         "selected_faces_after_hole_fill": selected_after_hole_fill,
+        "selected_faces_after_opening": selected_after_opening,
         "unselected_components": hole_report["components"],
         "filled_hole_components": hole_report["filled_components"],
         "filled_hole_faces": hole_report["filled_faces"],
@@ -436,6 +482,7 @@ def main() -> None:
     parser.add_argument("--oval-scale", type=float, default=1.0)
     parser.add_argument("--adjacency-rings", type=int, default=0)
     parser.add_argument("--maximum-hole-faces", type=int, default=1000)
+    parser.add_argument("--opening-rings", type=int, default=10)
     parser.add_argument("--minimum-detected-frames", type=int, default=3)
     parser.add_argument("--minimum-selected-faces", type=int, default=10_000)
     args = parser.parse_args()
@@ -448,6 +495,7 @@ def main() -> None:
             oval_scale=args.oval_scale,
             adjacency_rings=args.adjacency_rings,
             maximum_hole_faces=args.maximum_hole_faces,
+            opening_rings=args.opening_rings,
             minimum_detected_frames=args.minimum_detected_frames,
             minimum_selected_faces=args.minimum_selected_faces,
         ),

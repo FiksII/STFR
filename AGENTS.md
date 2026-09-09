@@ -141,7 +141,8 @@ production path uses MediaPipe face landmarks and the COLMAP cameras to retain
 visible facial triangles from `2dgs_recon.obj`. It fills only small unselected
 face components (up to 1000 triangles by default) before keeping the largest
 connected crop, preventing rasterization pinholes without expanding into the
-background. It then uses non-overlapping xatlas UV islands for texture
+background. A 10-ring topology opening removes thin boundary protrusions without
+growing the selected region. It then uses non-overlapping xatlas UV islands for texture
 optimization. `xatlas==0.0.11` is installed by the frozen uv
 environment. Texture training bounds only the LPIPS input to a 512-pixel long
 edge; its UV output and geometry-aware L1 loss remain full-resolution. Export

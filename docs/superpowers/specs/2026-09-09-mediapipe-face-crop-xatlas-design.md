@@ -19,7 +19,8 @@ resumed from the geometry stage without retraining.
    most 1000 faces that touch the selection, and keep the largest connected
    component. This closes sub-pixel rasterization gaps while leaving the large
    background component outside the crop. Optional face-adjacency expansion
-   remains configurable and defaults to zero.
+   remains configurable and defaults to zero. A 10-ring topology opening then
+   removes narrow selected protrusions without expanding the face boundary.
 5. Apply three low-displacement Taubin smoothing iterations to the cropped mesh.
    Estimate a right-handed canonical frame from the facial surface plane and
    COLMAP camera poses, then center the face and scale its height to 1.35 units.
