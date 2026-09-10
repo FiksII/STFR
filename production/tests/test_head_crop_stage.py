@@ -14,6 +14,7 @@ from production.head_crop_stage import (
     crop_head_mesh,
     fill_small_face_gaps,
     open_face_selection,
+    validate_semantic_coverage,
 )
 from production.head_segmentation import HeadMaskConfig
 
@@ -26,6 +27,46 @@ def test_head_crop_defaults_preserve_head_detail() -> None:
     assert config.minimum_detected_frames == 3
     assert config.minimum_selected_faces == 10_000
     assert config.mask.neck_height_ratio == 0.45
+    assert config.minimum_hair_faces == 100
+    assert config.minimum_ear_faces == 10
+    assert config.minimum_neck_faces == 100
+
+
+def test_semantic_coverage_requires_hair_both_ears_and_neck() -> None:
+    reports = [
+        {"retained_class_pixels": {"7": 20, "8": 20, "14": 80, "17": 100}}
+    ]
+
+    coverage = validate_semantic_coverage(
+        reports,
+        {
+            "hair_faces": 120,
+            "left_ear_faces": 20,
+            "right_ear_faces": 20,
+            "neck_faces": 120,
+        },
+        HeadCropConfig(),
+    )
+
+    assert coverage == {
+        "hair_pixels": 100,
+        "left_ear_pixels": 20,
+        "right_ear_pixels": 20,
+        "neck_pixels": 80,
+        "hair_faces": 120,
+        "left_ear_faces": 20,
+        "right_ear_faces": 20,
+        "neck_faces": 120,
+    }
+
+    projected = {
+        "hair_faces": 120,
+        "left_ear_faces": 20,
+        "right_ear_faces": 0,
+        "neck_faces": 120,
+    }
+    with pytest.raises(ValueError, match="right ear"):
+        validate_semantic_coverage(reports, projected, HeadCropConfig())
 
 
 def test_aggregate_visible_faces_combines_masked_ids_from_views() -> None:
@@ -50,10 +91,46 @@ def test_fill_small_face_gaps_keeps_large_outside_component() -> None:
         dtype=np.int64,
     )
 
-    filled, report = fill_small_face_gaps(selected, adjacency, maximum_hole_faces=100)
+    filled, report = fill_small_face_gaps(
+        selected,
+        adjacency,
+        maximum_hole_faces=100,
+        boundary_faces=np.array([False, False, False, True, True, True]),
+    )
 
     assert filled.tolist() == [True, True, True, False, False, False]
     assert report == {"components": 2, "filled_components": 1, "filled_faces": 1}
+
+
+def test_fill_small_face_gaps_does_not_fill_component_on_mesh_boundary() -> None:
+    selected = np.array([True, False, True, True])
+    adjacency = np.array([[0, 1], [1, 2], [2, 3]], dtype=np.int64)
+    boundary_faces = np.array([False, True, False, False])
+
+    filled, report = fill_small_face_gaps(
+        selected,
+        adjacency,
+        maximum_hole_faces=100,
+        boundary_faces=boundary_faces,
+    )
+
+    assert filled.tolist() == selected.tolist()
+    assert report["filled_components"] == 0
+
+
+def test_fill_small_face_gaps_fills_sole_enclosed_component() -> None:
+    selected = np.array([True, False, True])
+    adjacency = np.array([[0, 1], [1, 2]], dtype=np.int64)
+
+    filled, report = fill_small_face_gaps(
+        selected,
+        adjacency,
+        maximum_hole_faces=100,
+        boundary_faces=np.zeros(3, dtype=bool),
+    )
+
+    assert filled.tolist() == [True, True, True]
+    assert report["filled_components"] == 1
 
 
 def test_open_face_selection_removes_thin_tip_without_expanding() -> None:
@@ -117,6 +194,9 @@ def test_crop_exports_head_union_and_separate_face_anchor(tmp_path: Path) -> Non
         labels = np.zeros((8, 8), dtype=np.uint8)
         labels[0:2, 2:7] = 17
         labels[2:7, 2:7] = 1
+        labels[2:4, 1:2] = 7
+        labels[2:4, 7:8] = 8
+        labels[7:8, 3:5] = 14
         return labels
 
     def rasterize(frame, image_size):
@@ -124,6 +204,9 @@ def test_crop_exports_head_union_and_separate_face_anchor(tmp_path: Path) -> Non
         raster = np.full(image_size, -1, dtype=np.int64)
         raster[0:2, 2:7] = head_ids[name]
         raster[2:7, 2:7] = anchor_ids[name]
+        raster[2:4, 1:2] = head_ids[name]
+        raster[2:4, 7:8] = head_ids[name]
+        raster[7:8, 3:5] = head_ids[name]
         return raster
 
     output = tmp_path / "head.ply"
@@ -145,6 +228,9 @@ def test_crop_exports_head_union_and_separate_face_anchor(tmp_path: Path) -> Non
             maximum_hole_faces=0,
             opening_rings=0,
             minimum_selected_faces=6,
+            minimum_hair_faces=1,
+            minimum_ear_faces=1,
+            minimum_neck_faces=1,
         ),
         detector=detect,
         parser=parse,
@@ -157,6 +243,14 @@ def test_crop_exports_head_union_and_separate_face_anchor(tmp_path: Path) -> Non
     assert report["output_faces"] == len(head.faces) == 6
     assert report["face_anchor_faces"] == len(face_anchor.faces) == 3
     assert report["detected_frames"] == 3
+    assert report["semantic_coverage"]["hair_pixels"] > 0
+    assert report["semantic_coverage"]["left_ear_pixels"] > 0
+    assert report["semantic_coverage"]["right_ear_pixels"] > 0
+    assert report["semantic_coverage"]["neck_pixels"] > 0
+    assert report["semantic_coverage"]["hair_faces"] > 0
+    assert report["semantic_coverage"]["left_ear_faces"] > 0
+    assert report["semantic_coverage"]["right_ear_faces"] > 0
+    assert report["semantic_coverage"]["neck_faces"] > 0
     assert len(list(diagnostics.glob("*.png"))) == 3
 
 

@@ -45,6 +45,9 @@ def test_head_mask_keeps_head_and_short_neck_but_excludes_accessories() -> None:
     assert not mask[18, 10]
     assert report["neck_height_ratio"] == 0.45
     assert report["output_pixels"] == int(mask.sum())
+    assert report["retained_class_pixels"]["17"] > 0
+    assert report["retained_class_pixels"]["7"] > 0
+    assert report["retained_class_pixels"]["14"] > 0
 
 
 def test_head_mask_limits_neck_to_jaw_width() -> None:

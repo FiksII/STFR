@@ -1,9 +1,12 @@
 from pathlib import Path
 
+import pytest
+
 from production.reconstruction_stage import (
     ReconstructionConfig,
     build_reconstruction_commands,
     required_reconstruction_outputs,
+    validate_reconstruction_outputs,
 )
 
 
@@ -87,5 +90,51 @@ def test_reconstruction_outputs_do_not_require_registration_or_wrap(
     outputs = required_reconstruction_outputs(config)
 
     assert config.workspace_root / "2dgs_recon.obj" in outputs
+    assert config.workspace_root / "refinement" / "sample" / "image" in outputs
+    assert config.workspace_root / "mask" in outputs
     assert all("register" not in output.parts for output in outputs)
     assert all(output.name != "final_hack.obj" for output in outputs)
+
+
+def test_reconstruction_validator_accepts_directories_and_matched_masks(
+    tmp_path: Path,
+) -> None:
+    config = ReconstructionConfig(
+        code_root=tmp_path / "code",
+        video_path=tmp_path / "capture.mov",
+        workspace_root=tmp_path / "workspace",
+    )
+    outputs = required_reconstruction_outputs(config)
+    for path in outputs[:3]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"output")
+    selected = outputs[3]
+    masks = outputs[4]
+    selected.mkdir(parents=True)
+    masks.mkdir(parents=True)
+    (selected / "00001.png").write_bytes(b"frame")
+    (masks / "00001.png").write_bytes(b"mask")
+
+    report = validate_reconstruction_outputs(config)
+
+    assert report["selected_texture_frames"] == 1
+
+
+def test_reconstruction_validator_requires_mask_for_every_selected_frame(
+    tmp_path: Path,
+) -> None:
+    config = ReconstructionConfig(
+        code_root=tmp_path / "code",
+        video_path=tmp_path / "capture.mov",
+        workspace_root=tmp_path / "workspace",
+    )
+    outputs = required_reconstruction_outputs(config)
+    for path in outputs[:3]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"output")
+    outputs[3].mkdir(parents=True)
+    outputs[4].mkdir(parents=True)
+    (outputs[3] / "00001.png").write_bytes(b"frame")
+
+    with pytest.raises(FileNotFoundError, match="00001.png"):
+        validate_reconstruction_outputs(config)

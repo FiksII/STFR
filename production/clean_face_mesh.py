@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+from typing import Iterable
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -25,6 +26,8 @@ class CleanupConfig:
     minimum_faces: int = 1000
     minimum_largest_component_fraction: float = 0.5
     maximum_roughness_p90_degrees: float = 30.0
+    maximum_front_yaw_degrees: float = 20.0
+    minimum_side_yaw_degrees: float = 30.0
     output_orientation: str = "gltf_y_up"
 
     def validate(self) -> None:
@@ -38,6 +41,10 @@ class CleanupConfig:
             raise ValueError("Minimum face count must be positive")
         if not 0 < self.minimum_largest_component_fraction <= 1:
             raise ValueError("Largest component fraction must be in (0, 1]")
+        if not 0 <= self.maximum_front_yaw_degrees < 90:
+            raise ValueError("Maximum front yaw must be in [0, 90)")
+        if not 0 <= self.minimum_side_yaw_degrees < 90:
+            raise ValueError("Minimum side yaw must be in [0, 90)")
         if self.output_orientation != "gltf_y_up":
             raise ValueError("Production STFR output orientation must be gltf_y_up")
 
@@ -51,10 +58,27 @@ def transform_points(points: np.ndarray, matrix: np.ndarray) -> np.ndarray:
     return (homogeneous @ matrix)[:, :3]
 
 
-def load_camera_to_world_matrices(path: Path) -> np.ndarray:
+def load_camera_to_world_matrices(
+    path: Path,
+    frame_names: Iterable[str] | None = None,
+) -> np.ndarray:
     metadata = json.loads(Path(path).read_text(encoding="utf-8"))
+    frames = metadata.get("frames", [])
+    if frame_names is not None:
+        frames_by_name = {
+            Path(frame["file_path"]).name: frame
+            for frame in frames
+        }
+        names = list(frame_names)
+        missing = [name for name in names if name not in frames_by_name]
+        if missing:
+            raise ValueError(
+                "Camera transforms are missing selected frames: "
+                + ", ".join(missing)
+            )
+        frames = [frames_by_name[name] for name in names]
     matrices = np.asarray(
-        [frame["transform_matrix"] for frame in metadata.get("frames", [])],
+        [frame["transform_matrix"] for frame in frames],
         dtype=np.float64,
     )
     if matrices.ndim != 3 or matrices.shape[1:] != (4, 4) or not len(matrices):
@@ -62,6 +86,42 @@ def load_camera_to_world_matrices(path: Path) -> np.ndarray:
     if not np.isfinite(matrices).all():
         raise ValueError("Camera transforms contain non-finite values")
     return matrices
+
+
+def camera_view_coverage(
+    camera_to_world_matrices: np.ndarray,
+    source_to_output: np.ndarray,
+    maximum_front_yaw_degrees: float,
+    minimum_side_yaw_degrees: float,
+) -> dict:
+    cameras = np.asarray(camera_to_world_matrices, dtype=np.float64)
+    if cameras.ndim != 3 or cameras.shape[1:] != (4, 4) or not len(cameras):
+        raise ValueError("Camera transforms must have shape [N, 4, 4]")
+    positions = transform_points(cameras[:, :3, 3], source_to_output)
+    yaw = np.rad2deg(np.arctan2(positions[:, 0], positions[:, 2]))
+    if not np.isfinite(yaw).all():
+        raise ValueError("Camera view yaw contains non-finite values")
+    front_covered = bool(np.min(np.abs(yaw)) <= maximum_front_yaw_degrees)
+    left_covered = bool(np.min(yaw) <= -minimum_side_yaw_degrees)
+    right_covered = bool(np.max(yaw) >= minimum_side_yaw_degrees)
+    missing = []
+    if not front_covered:
+        missing.append("front view")
+    if not left_covered:
+        missing.append("left side")
+    if not right_covered:
+        missing.append("right side")
+    if missing:
+        raise ValueError("Camera coverage is missing " + ", ".join(missing))
+    return {
+        "yaw_degrees": sorted(float(value) for value in yaw),
+        "minimum_yaw_degrees": float(np.min(yaw)),
+        "maximum_yaw_degrees": float(np.max(yaw)),
+        "minimum_absolute_yaw_degrees": float(np.min(np.abs(yaw))),
+        "front_covered": front_covered,
+        "left_covered": left_covered,
+        "right_covered": right_covered,
+    }
 
 
 def canonical_face_transform(
@@ -191,6 +251,7 @@ def fill_small_boundary_loops(
         "closed_components": 0,
         "filled_components": 0,
         "filled_faces": 0,
+        "skipped_nonplanar_components": 0,
     }
     if not len(boundary_edges):
         return mesh.copy(), empty_report
@@ -218,6 +279,7 @@ def fill_small_boundary_loops(
     closed_components = 0
     filled_components = 0
     filled_faces = 0
+    skipped_nonplanar_components = 0
     for label in component_labels:
         component_edges = boundary_edges[labels[boundary_edges[:, 0]] == label]
         component_vertices, degrees = np.unique(component_edges, return_counts=True)
@@ -226,6 +288,18 @@ def fill_small_boundary_loops(
         closed_components += 1
         extent = np.ptp(canonical_vertices[component_vertices], axis=0)
         if float(extent.max()) > maximum_extent:
+            continue
+        centered = (
+            canonical_vertices[component_vertices]
+            - canonical_vertices[component_vertices].mean(axis=0)
+        )
+        singular_values = np.linalg.svd(centered, compute_uv=False)
+        if (
+            len(singular_values) >= 3
+            and singular_values[0] > 1e-12
+            and singular_values[-1] / singular_values[0] > 0.1
+        ):
+            skipped_nonplanar_components += 1
             continue
 
         center_id = len(mesh.vertices) + len(added_vertices)
@@ -270,6 +344,7 @@ def fill_small_boundary_loops(
         "closed_components": int(closed_components),
         "filled_components": int(filled_components),
         "filled_faces": int(filled_faces),
+        "skipped_nonplanar_components": int(skipped_nonplanar_components),
     }
 
 
@@ -313,6 +388,7 @@ def clean_face_mesh(
     if camera_to_world_matrices is None:
         source_to_output = SOURCE_TO_GLTF_Y_UP_ROW_MATRIX
         canonicalization = "fixed_gltf_y_up"
+        view_coverage = None
     else:
         canonicalization = "camera_pca"
         if orientation_path is not None:
@@ -327,6 +403,12 @@ def clean_face_mesh(
             orientation_vertices,
             camera_to_world_matrices,
             config.target_face_height,
+        )
+        view_coverage = camera_view_coverage(
+            camera_to_world_matrices,
+            source_to_output,
+            config.maximum_front_yaw_degrees,
+            config.minimum_side_yaw_degrees,
         )
 
     cleaned, boundary_hole_report = fill_small_boundary_loops(
@@ -359,6 +441,7 @@ def clean_face_mesh(
         "orientation_vertices": int(len(orientation_vertices)),
         "boundary_holes": boundary_hole_report,
         "source_to_output_row_matrix": source_to_output.tolist(),
+        "view_coverage": view_coverage,
         "smooth_displacement_mean": float(displacement.mean()),
         "smooth_displacement_p95": float(np.quantile(displacement, 0.95)),
         "smooth_displacement_max": float(displacement.max()),

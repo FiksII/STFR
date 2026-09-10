@@ -8,6 +8,7 @@ from production.run_video_to_glb import (
     PIPELINE_STAGES,
     build_clean_resume_config,
     build_head_crop_resume_config,
+    build_reconstruction_resume_config,
     build_texture_resume_config,
     main,
     parse_args,
@@ -15,6 +16,7 @@ from production.run_video_to_glb import (
 )
 from production.head_crop_stage import HeadCropConfig
 from production.clean_face_mesh import CleanupConfig
+from production.reconstruction_stage import ReconstructionConfig
 from production.texture_stage import TextureConfig
 
 
@@ -99,6 +101,13 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
 ) -> None:
     mesh = tmp_path / "face.ply"
     mesh.write_bytes(b"aaaa")
+    selected = tmp_path / "refinement" / "sample" / "image"
+    masks = tmp_path / "mask"
+    selected.mkdir(parents=True)
+    masks.mkdir()
+    (selected / "00001.png").write_bytes(b"frame-a")
+    (masks / "00001.png").write_bytes(b"mask-a")
+    (tmp_path / "transforms.json").write_bytes(b"camera-a")
     code_root = Path(__file__).resolve().parents[2]
     config = TextureConfig(code_root, tmp_path, mesh, tmp_path / "artifacts")
     first = build_texture_resume_config(config)
@@ -111,8 +120,85 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
     assert first["lpips_max_size"] == second["lpips_max_size"] == 512
     assert len(first["renderer_code_sha256"]) == 64
     assert len(first["texture_code_sha256"]) == 64
+    assert len(first["texture_stage_code_sha256"]) == 64
     assert len(first["unwrap_code_sha256"]) == 64
     assert first["source_mesh_sha256"] != second["source_mesh_sha256"]
+
+
+def test_reconstruction_resume_fingerprint_tracks_video_and_code(tmp_path: Path) -> None:
+    video = tmp_path / "input.mov"
+    video.write_bytes(b"video-a")
+    code_root = Path(__file__).resolve().parents[2]
+    config = ReconstructionConfig(code_root, video, tmp_path / "workspace")
+
+    first = build_reconstruction_resume_config(config)
+    video.write_bytes(b"video-b")
+    second = build_reconstruction_resume_config(config)
+
+    assert first["video_sha256"] != second["video_sha256"]
+    assert len(first["reconstruction_code_sha256"]) == 64
+
+
+def test_reconstruction_resume_fingerprint_tracks_native_code_and_matting_model(
+    tmp_path: Path,
+) -> None:
+    code_root = tmp_path / "code"
+    (code_root / "production").mkdir(parents=True)
+    (code_root / "reconstruction").mkdir()
+    model_root = code_root / "matting" / "model"
+    model_root.mkdir(parents=True)
+    (code_root / "production" / "reconstruction_stage.py").write_bytes(b"stage")
+    native = code_root / "reconstruction" / "kernel.cu"
+    model = model_root / "foreground-segmentation-model-vitl16_384.onnx"
+    native.write_bytes(b"native-a")
+    model.write_bytes(b"model-a")
+    video = tmp_path / "input.mov"
+    video.write_bytes(b"video")
+    config = ReconstructionConfig(code_root, video, tmp_path / "workspace")
+
+    first = build_reconstruction_resume_config(config)
+    native.write_bytes(b"native-b")
+    second = build_reconstruction_resume_config(config)
+    model.write_bytes(b"model-b")
+    third = build_reconstruction_resume_config(config)
+
+    assert first["reconstruction_code_sha256"] != second["reconstruction_code_sha256"]
+    assert second["matting_model_sha256"] != third["matting_model_sha256"]
+
+
+def test_texture_resume_fingerprint_tracks_cameras_frames_and_masks(
+    tmp_path: Path,
+) -> None:
+    mesh = tmp_path / "face.ply"
+    mesh.write_bytes(b"mesh")
+    selected = tmp_path / "refinement" / "sample" / "image"
+    masks = tmp_path / "mask"
+    selected.mkdir(parents=True)
+    masks.mkdir()
+    frame = selected / "00001.png"
+    mask = masks / frame.name
+    transforms = tmp_path / "transforms.json"
+    frame.write_bytes(b"frame-a")
+    mask.write_bytes(b"mask-a")
+    transforms.write_bytes(b"camera-a")
+    config = TextureConfig(
+        Path(__file__).resolve().parents[2],
+        tmp_path,
+        mesh,
+        tmp_path / "artifacts",
+    )
+
+    first = build_texture_resume_config(config)
+    frame.write_bytes(b"frame-b")
+    second = build_texture_resume_config(config)
+    mask.write_bytes(b"mask-b")
+    third = build_texture_resume_config(config)
+    transforms.write_bytes(b"camera-b")
+    fourth = build_texture_resume_config(config)
+
+    assert first["selected_frames"] != second["selected_frames"]
+    assert second["selected_masks"] != third["selected_masks"]
+    assert third["transforms_sha256"] != fourth["transforms_sha256"]
 
 
 def test_clean_resume_fingerprint_tracks_mesh_cameras_and_code(tmp_path: Path) -> None:
@@ -183,6 +269,8 @@ def test_head_crop_cli_defaults_are_production_values(tmp_path: Path) -> None:
     assert args.head_maximum_hole_faces == 1000
     assert args.head_opening_rings == 3
     assert args.head_maximum_boundary_hole_extent == 0.18
+    assert args.maximum_front_yaw_degrees == 20.0
+    assert args.minimum_side_yaw_degrees == 30.0
     assert args.head_parsing_model.name == "face-parsing-resnet18.onnx"
 
 
@@ -202,6 +290,7 @@ def test_asset_export_fingerprint_tracks_same_size_texture_changes(
     second = pipeline.build_asset_export_resume_config(report, np.eye(4))
 
     assert first["stem"] == second["stem"] == "head"
+    assert len(first["export_code_sha256"]) == 64
     assert first["texture_sha256"] != second["texture_sha256"]
 
 
@@ -223,3 +312,5 @@ def test_validation_fingerprint_tracks_same_size_staged_glb_changes(
 
     assert first["staged_glb_sha256"] != second["staged_glb_sha256"]
     assert first["uv_method"] == second["uv_method"] == "xatlas"
+    assert len(first["validation_code_sha256"]) == 64
+    assert len(first["pipeline_code_sha256"]) == 64

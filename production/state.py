@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -24,13 +25,54 @@ def timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def artifact_fingerprint(path: Path) -> dict[str, Any] | None:
+    path = Path(path).resolve()
+    if path.is_file():
+        size = path.stat().st_size
+        if size == 0:
+            return None
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return {
+            "path": str(path),
+            "kind": "file",
+            "bytes": size,
+            "sha256": digest.hexdigest(),
+        }
+    if path.is_dir():
+        files = sorted(item for item in path.rglob("*") if item.is_file())
+        if not files:
+            return None
+        digest = hashlib.sha256()
+        total_size = 0
+        for item in files:
+            relative = item.relative_to(path).as_posix().encode("utf-8")
+            item_fingerprint = artifact_fingerprint(item)
+            if item_fingerprint is None:
+                return None
+            total_size += int(item_fingerprint["bytes"])
+            digest.update(relative)
+            digest.update(b"\0")
+            digest.update(bytes.fromhex(str(item_fingerprint["sha256"])))
+        return {
+            "path": str(path),
+            "kind": "directory",
+            "bytes": total_size,
+            "files": len(files),
+            "sha256": digest.hexdigest(),
+        }
+    return None
+
+
 class PipelineState:
     def __init__(self, path: Path):
         self.path = Path(path)
         if self.path.is_file():
             self.data = json.loads(self.path.read_text(encoding="utf-8"))
         else:
-            self.data = {"version": 1, "stages": {}}
+            self.data = {"version": 2, "stages": {}}
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,16 +98,20 @@ class PipelineState:
         report: Mapping[str, Any] | None = None,
     ) -> None:
         output_paths = [Path(path).resolve() for path in outputs]
-        missing = [path for path in output_paths if not path.is_file() or path.stat().st_size == 0]
+        fingerprints = [artifact_fingerprint(path) for path in output_paths]
+        missing = [
+            path
+            for path, fingerprint in zip(output_paths, fingerprints, strict=True)
+            if fingerprint is None
+        ]
         if missing:
             raise FileNotFoundError("Stage outputs are missing or empty: " + ", ".join(map(str, missing)))
+        self.data["version"] = 2
         self.data["stages"][stage] = {
             "status": "completed",
             "config": json_value(config),
             "completed_at": timestamp(),
-            "outputs": [
-                {"path": str(path), "bytes": path.stat().st_size} for path in output_paths
-            ],
+            "outputs": fingerprints,
             "report": json_value(report or {}),
         }
         self.save()
@@ -94,8 +140,10 @@ class PipelineState:
         recorded = {item["path"]: item for item in record.get("outputs", [])}
         for path in expected:
             item = recorded.get(str(path))
-            if item is None or not path.is_file() or path.stat().st_size == 0:
+            current = artifact_fingerprint(path)
+            if item is None or current is None:
                 return False
-            if path.stat().st_size != item.get("bytes"):
+            comparable_keys = ("kind", "bytes", "files", "sha256")
+            if any(item.get(key) != current.get(key) for key in comparable_keys):
                 return False
         return True

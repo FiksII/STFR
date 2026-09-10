@@ -56,6 +56,9 @@ FACE_OVAL_INDICES = np.array(
 HEAD_LABELS = frozenset({1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 17})
 NECK_LABEL = 14
 EXCLUDED_LABELS = frozenset({6, 9, 15, 16, 18})
+LEFT_EAR_LABEL = 7
+RIGHT_EAR_LABEL = 8
+HAIR_LABEL = 17
 
 
 @dataclass(frozen=True)
@@ -168,12 +171,17 @@ def build_head_mask(
         anchor,
         config.minimum_component_pixels,
     )
+    retained_class_pixels = {
+        str(label): int(np.count_nonzero(result & (labels == label)))
+        for label in range(19)
+    }
     return result, {
         **asdict(config),
         "image_size": [height, width],
         "head_class_pixels": int(head.sum()),
         "neck_class_pixels": int(np.count_nonzero(labels == NECK_LABEL)),
-        "retained_neck_pixels": int(neck.sum()),
+        "retained_neck_pixels": retained_class_pixels[str(NECK_LABEL)],
+        "retained_class_pixels": retained_class_pixels,
         "candidate_components": candidate_components,
         "output_pixels": int(result.sum()),
     }

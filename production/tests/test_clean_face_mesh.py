@@ -8,6 +8,7 @@ from trimesh.smoothing import filter_taubin
 from production.clean_face_mesh import (
     CleanupConfig,
     canonical_face_transform,
+    camera_view_coverage,
     clean_face_mesh,
     fill_small_boundary_loops,
     transform_points,
@@ -19,6 +20,8 @@ def test_cleanup_defaults_to_three_taubin_passes() -> None:
     assert CleanupConfig().output_orientation == "gltf_y_up"
     assert CleanupConfig().target_face_height == 1.35
     assert CleanupConfig().maximum_boundary_hole_extent == 0.18
+    assert CleanupConfig().maximum_front_yaw_degrees == 20.0
+    assert CleanupConfig().minimum_side_yaw_degrees == 30.0
 
 
 def test_fill_small_boundary_loops_closes_small_hole_not_outer_boundary() -> None:
@@ -65,6 +68,58 @@ def test_fill_small_boundary_loops_closes_small_hole_not_outer_boundary() -> Non
     )
     remaining_boundary = np.asarray(filled.edges)[boundary_edges]
     assert set(np.unique(remaining_boundary)) == {0, 1, 2, 3}
+
+
+def test_fill_small_boundary_loops_skips_nonplanar_contour() -> None:
+    vertices = np.array(
+        [
+            [-0.1, -0.1, 0.0],
+            [0.1, -0.1, 0.1],
+            [0.1, 0.1, -0.1],
+            [-0.1, 0.1, 0.1],
+        ]
+    )
+    mesh = trimesh.Trimesh(
+        vertices=vertices,
+        faces=np.array([[0, 1, 2], [0, 2, 3]]),
+        process=False,
+    )
+
+    filled, report = fill_small_boundary_loops(
+        mesh,
+        source_to_output=np.eye(4),
+        maximum_extent=0.25,
+    )
+
+    assert len(filled.faces) == len(mesh.faces)
+    assert report["skipped_nonplanar_components"] == 1
+
+
+def test_camera_view_coverage_requires_front_and_both_sides() -> None:
+    cameras = []
+    for position in ((0.0, 0.0, 10.0), (-8.0, 0.0, 10.0), (8.0, 0.0, 10.0)):
+        matrix = np.eye(4)
+        matrix[:3, 3] = position
+        cameras.append(matrix)
+
+    report = camera_view_coverage(
+        np.asarray(cameras),
+        np.eye(4),
+        maximum_front_yaw_degrees=20.0,
+        minimum_side_yaw_degrees=30.0,
+    )
+
+    assert report["front_covered"]
+    assert report["left_covered"]
+    assert report["right_covered"]
+
+    with pytest.raises(ValueError, match="right side"):
+        camera_view_coverage(
+            np.asarray(cameras[:2]),
+            np.eye(4),
+            maximum_front_yaw_degrees=20.0,
+            minimum_side_yaw_degrees=30.0,
+        )
 
 
 def test_camera_canonical_transform_centers_scales_and_orients_face() -> None:
@@ -254,6 +309,7 @@ def test_cleanup_orients_full_head_from_separate_face_anchor(
             smooth_iterations=0,
             minimum_faces=10,
             maximum_roughness_p90_degrees=180.0,
+            minimum_side_yaw_degrees=0.0,
         ),
         camera_to_world_matrices=camera_array,
         orientation_path=anchor_path,

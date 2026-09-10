@@ -13,9 +13,13 @@ from scipy.sparse.csgraph import connected_components
 import trimesh
 
 from production.head_segmentation import (
+    HAIR_LABEL,
     HeadMaskConfig,
+    LEFT_EAR_LABEL,
     MediaPipeFaceAnchorDetector,
+    NECK_LABEL,
     OnnxFaceParser,
+    RIGHT_EAR_LABEL,
     build_head_mask,
     face_oval_mask,
 )
@@ -29,6 +33,9 @@ class HeadCropConfig:
     opening_rings: int = 3
     minimum_detected_frames: int = 3
     minimum_selected_faces: int = 10_000
+    minimum_hair_faces: int = 100
+    minimum_ear_faces: int = 10
+    minimum_neck_faces: int = 100
 
     def validate(self) -> None:
         self.mask.validate()
@@ -40,6 +47,48 @@ class HeadCropConfig:
             raise ValueError("Minimum detected frames must be positive")
         if self.minimum_selected_faces < 1:
             raise ValueError("Minimum selected faces must be positive")
+        if self.minimum_hair_faces < 0:
+            raise ValueError("Minimum hair faces cannot be negative")
+        if self.minimum_ear_faces < 0:
+            raise ValueError("Minimum ear faces cannot be negative")
+        if self.minimum_neck_faces < 0:
+            raise ValueError("Minimum neck faces cannot be negative")
+
+
+def validate_semantic_coverage(
+    mask_reports: Iterable[dict],
+    projected_faces: dict[str, int],
+    config: HeadCropConfig,
+) -> dict[str, int]:
+    totals = {str(label): 0 for label in range(19)}
+    for report in mask_reports:
+        for label, pixels in report.get("retained_class_pixels", {}).items():
+            if str(label) in totals:
+                totals[str(label)] += int(pixels)
+    coverage = {
+        "hair_pixels": totals[str(HAIR_LABEL)],
+        "left_ear_pixels": totals[str(LEFT_EAR_LABEL)],
+        "right_ear_pixels": totals[str(RIGHT_EAR_LABEL)],
+        "neck_pixels": totals[str(NECK_LABEL)],
+        "hair_faces": int(projected_faces.get("hair_faces", 0)),
+        "left_ear_faces": int(projected_faces.get("left_ear_faces", 0)),
+        "right_ear_faces": int(projected_faces.get("right_ear_faces", 0)),
+        "neck_faces": int(projected_faces.get("neck_faces", 0)),
+    }
+    requirements = (
+        ("hair", coverage["hair_faces"], config.minimum_hair_faces),
+        ("left ear", coverage["left_ear_faces"], config.minimum_ear_faces),
+        ("right ear", coverage["right_ear_faces"], config.minimum_ear_faces),
+        ("neck", coverage["neck_faces"], config.minimum_neck_faces),
+    )
+    missing = [
+        f"{name} ({actual} < {minimum} faces)"
+        for name, actual, minimum in requirements
+        if actual < minimum
+    ]
+    if missing:
+        raise ValueError("Head semantic coverage is missing " + ", ".join(missing))
+    return coverage
 
 
 class Pytorch3DHeadRasterizer:
@@ -123,6 +172,7 @@ def fill_small_face_gaps(
     selected: np.ndarray,
     adjacency: np.ndarray,
     maximum_hole_faces: int,
+    boundary_faces: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, int]]:
     result = np.asarray(selected, dtype=bool).copy()
     pairs = np.asarray(adjacency, dtype=np.int64)
@@ -134,6 +184,12 @@ def fill_small_face_gaps(
         raise ValueError("Maximum hole faces cannot be negative")
     if len(pairs) and (pairs.min() < 0 or pairs.max() >= len(result)):
         raise ValueError("Face adjacency contains invalid indices")
+    if boundary_faces is None:
+        boundary = np.zeros(len(result), dtype=bool)
+    else:
+        boundary = np.asarray(boundary_faces, dtype=bool)
+        if boundary.shape != result.shape:
+            raise ValueError("Boundary face mask must match selected face mask")
 
     unselected_ids = np.flatnonzero(~result)
     empty_report = {
@@ -165,8 +221,15 @@ def fill_small_face_gaps(
     )
     touches_selection = np.zeros(component_count, dtype=bool)
     touches_selection[labels[local_ids[border_unselected]]] = True
-    fill_components = touches_selection & (component_sizes <= maximum_hole_faces)
-    fill_components[int(np.argmax(component_sizes))] = False
+    touches_boundary = np.zeros(component_count, dtype=bool)
+    boundary_unselected = unselected_ids[boundary[unselected_ids]]
+    if len(boundary_unselected):
+        touches_boundary[labels[local_ids[boundary_unselected]]] = True
+    fill_components = (
+        touches_selection
+        & ~touches_boundary
+        & (component_sizes <= maximum_hole_faces)
+    )
     fill_local = fill_components[labels]
     result[unselected_ids[fill_local]] = True
     return result, {
@@ -263,6 +326,18 @@ def crop_head_mesh(
     head_rasters: list[np.ndarray] = []
     head_masks: list[np.ndarray] = []
     anchor_masks: list[np.ndarray] = []
+    semantic_masks: dict[str, list[np.ndarray]] = {
+        "hair_faces": [],
+        "left_ear_faces": [],
+        "right_ear_faces": [],
+        "neck_faces": [],
+    }
+    semantic_labels = {
+        "hair_faces": HAIR_LABEL,
+        "left_ear_faces": LEFT_EAR_LABEL,
+        "right_ear_faces": RIGHT_EAR_LABEL,
+        "neck_faces": NECK_LABEL,
+    }
     mask_reports: list[dict] = []
     detected_names: list[str] = []
     missed_names: list[str] = []
@@ -286,6 +361,8 @@ def crop_head_mesh(
             head_rasters.append(raster)
             head_masks.append(head_mask)
             anchor_masks.append(face_oval_mask(landmarks, image_size))
+            for name, label in semantic_labels.items():
+                semantic_masks[name].append(head_mask & (labels == label))
             mask_reports.append({"frame": image_path.name, **mask_report})
             detected_names.append(image_path.name)
             cv2.imwrite(
@@ -301,7 +378,6 @@ def crop_head_mesh(
             f"Head crop requires at least {config.minimum_detected_frames} detected "
             f"frames, got {len(detected_names)}"
         )
-
     selected = aggregate_visible_faces(
         head_rasters,
         head_masks,
@@ -309,10 +385,16 @@ def crop_head_mesh(
     )
     selected_before_hole_fill = int(selected.sum())
     adjacency = np.asarray(source.face_adjacency)
+    edge_face_counts = np.bincount(np.asarray(source.edges_unique_inverse))
+    boundary_faces = np.any(
+        edge_face_counts[np.asarray(source.faces_unique_edges)] == 1,
+        axis=1,
+    )
     selected, hole_report = fill_small_face_gaps(
         selected,
         adjacency,
         config.maximum_hole_faces,
+        boundary_faces=boundary_faces,
     )
     selected_after_hole_fill = int(selected.sum())
     selected = open_face_selection(selected, adjacency, config.opening_rings)
@@ -322,6 +404,19 @@ def crop_head_mesh(
             f"Head crop retained {selected_after_opening} faces, fewer than the "
             f"required {config.minimum_selected_faces}"
         )
+    projected_faces = {}
+    for name, masks in semantic_masks.items():
+        class_faces = aggregate_visible_faces(
+            head_rasters,
+            masks,
+            face_count=len(source.faces),
+        )
+        projected_faces[name] = int(np.count_nonzero(class_faces & selected))
+    semantic_coverage = validate_semantic_coverage(
+        mask_reports,
+        projected_faces,
+        config,
+    )
 
     anchor_selected = aggregate_visible_faces(
         head_rasters,
@@ -360,6 +455,7 @@ def crop_head_mesh(
         "detected_frame_names": detected_names,
         "missed_frames": missed_names,
         "mask_reports": mask_reports,
+        "semantic_coverage": semantic_coverage,
         "source_vertices": int(len(source.vertices)),
         "source_faces": int(len(source.faces)),
         "selected_faces_before_hole_fill": selected_before_hole_fill,

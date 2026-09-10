@@ -62,12 +62,89 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def files_sha256(paths: Iterable[Path], root: Path) -> str:
+    root = Path(root).resolve()
+    files = sorted({Path(path).resolve() for path in paths if Path(path).is_file()})
+    if not files:
+        raise FileNotFoundError("No source files were found for the code fingerprint")
+    digest = hashlib.sha256()
+    for path in files:
+        try:
+            name = path.relative_to(root).as_posix()
+        except ValueError:
+            name = str(path)
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(bytes.fromhex(file_sha256(path)))
+    return digest.hexdigest()
+
+
+def build_reconstruction_resume_config(config: ReconstructionConfig) -> dict:
+    code_root = Path(config.code_root)
+    source_files = [
+        code_root / "production" / "reconstruction_stage.py",
+    ]
+    for source_root in (
+        code_root / "matting",
+        code_root / "reconstruction",
+        code_root / "refinement" / "select_frame",
+    ):
+        source_files.extend(
+            path
+            for path in source_root.rglob("*")
+            if path.suffix.lower() in {".py", ".cu", ".cuh", ".cpp", ".h", ".hpp"}
+        )
+    matting_model = (
+        code_root
+        / "matting"
+        / "model"
+        / "foreground-segmentation-model-vitl16_384.onnx"
+    )
+    return {
+        **asdict(config),
+        "video_sha256": file_sha256(Path(config.video_path)),
+        "reconstruction_code_sha256": files_sha256(source_files, code_root),
+        "matting_model_sha256": (
+            file_sha256(matting_model) if matting_model.is_file() else None
+        ),
+    }
+
+
 def build_texture_resume_config(config: TextureConfig) -> dict:
     payload = asdict(config)
     code_root = Path(config.code_root)
+    source_root = Path(config.source_root)
+    selected_frames = sorted(
+        (source_root / "refinement" / "sample" / "image").glob("*.png")
+    )
+    if not selected_frames:
+        raise FileNotFoundError("Texture resume fingerprint has no selected frames")
+    selected_masks = [source_root / "mask" / frame.name for frame in selected_frames]
+    missing_masks = [path for path in selected_masks if not path.is_file()]
+    if missing_masks:
+        raise FileNotFoundError(
+            "Texture resume fingerprint is missing masks: "
+            + ", ".join(map(str, missing_masks))
+        )
+    transforms_path = source_root / "transforms.json"
     payload["source_mesh_sha256"] = file_sha256(config.source_mesh)
+    payload["texture_stage_code_sha256"] = file_sha256(
+        code_root / "production" / "texture_stage.py"
+    )
+    payload["transforms_sha256"] = file_sha256(transforms_path)
+    payload["selected_frames"] = [
+        {"name": path.name, "sha256": file_sha256(path)}
+        for path in selected_frames
+    ]
+    payload["selected_masks"] = [
+        {"name": path.name, "sha256": file_sha256(path)}
+        for path in selected_masks
+    ]
     payload["renderer_code_sha256"] = file_sha256(
         code_root / "texture" / "mesh_renderer.py"
+    )
+    payload["gbuffer_code_sha256"] = file_sha256(
+        code_root / "texture" / "render_gbuffer.py"
     )
     payload["texture_code_sha256"] = file_sha256(
         code_root / "texture" / "build_texture.py"
@@ -114,6 +191,7 @@ def build_clean_resume_config(
     source_mesh: Path,
     transforms_path: Path,
     orientation_mesh: Path,
+    camera_frame_names: Iterable[str] | None = None,
 ) -> dict:
     code_root = Path(__file__).resolve().parents[1]
     return {
@@ -121,6 +199,7 @@ def build_clean_resume_config(
         "source_mesh_sha256": file_sha256(Path(source_mesh)),
         "orientation_mesh_sha256": file_sha256(Path(orientation_mesh)),
         "transforms_sha256": file_sha256(Path(transforms_path)),
+        "camera_frame_names": list(camera_frame_names or []),
         "cleanup_code_sha256": file_sha256(
             code_root / "production" / "clean_face_mesh.py"
         ),
@@ -131,12 +210,16 @@ def build_asset_export_resume_config(
     texture_report: dict,
     matrix: np.ndarray,
 ) -> dict:
+    code_root = Path(__file__).resolve().parents[1]
     return {
         "matrix": np.asarray(matrix, dtype=np.float64).tolist(),
         "stem": "head",
         "source_obj_sha256": file_sha256(Path(texture_report["obj"])),
         "source_mtl_sha256": file_sha256(Path(texture_report["mtl"])),
         "texture_sha256": file_sha256(Path(texture_report["texture"])),
+        "export_code_sha256": file_sha256(
+            code_root / "production" / "export_glb.py"
+        ),
     }
 
 
@@ -146,11 +229,16 @@ def build_validation_resume_config(
     atlas_size: int,
     uv_method: str,
 ) -> dict:
+    code_root = Path(__file__).resolve().parents[1]
     return {
         "texture_size": [atlas_size, atlas_size],
         "uv_method": uv_method,
         "clean_geometry_sha256": file_sha256(clean_geometry),
         "staged_glb_sha256": file_sha256(staged_glb),
+        "validation_code_sha256": file_sha256(
+            code_root / "production" / "validate_asset.py"
+        ),
+        "pipeline_code_sha256": file_sha256(Path(__file__)),
     }
 
 
@@ -236,6 +324,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=0.18,
     )
+    parser.add_argument("--maximum-front-yaw-degrees", type=float, default=20.0)
+    parser.add_argument("--minimum-side-yaw-degrees", type=float, default=30.0)
     parser.add_argument("--smooth-iterations", type=int, default=3)
     parser.add_argument("--texture-iterations", type=int, default=301)
     parser.add_argument("--lpips-max-size", type=int, default=512)
@@ -266,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
     cleanup_config = CleanupConfig(
         smooth_iterations=args.smooth_iterations,
         maximum_boundary_hole_extent=args.head_maximum_boundary_hole_extent,
+        maximum_front_yaw_degrees=args.maximum_front_yaw_degrees,
+        minimum_side_yaw_degrees=args.minimum_side_yaw_degrees,
     )
     head_crop_config = HeadCropConfig(
         mask=HeadMaskConfig(neck_height_ratio=args.head_neck_height_ratio),
@@ -306,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
         reconstruction_report_path = artifacts / "reconstruction-report.json"
         execute_stage(
             "reconstruction",
-            asdict(reconstruction_config),
+            build_reconstruction_resume_config(reconstruction_config),
             required_reconstruction_outputs(reconstruction_config),
             reconstruction_report_path,
             lambda: run_reconstruction_stage(reconstruction_config, environment),
@@ -325,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             workspace / "refinement" / "sample" / "image",
             head_parsing_model,
         )
-        execute_stage(
+        head_report = execute_stage(
             "head_crop",
             head_crop_resume_config,
             (head_crop_geometry, face_anchor_geometry),
@@ -352,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
             head_crop_geometry,
             workspace / "transforms.json",
             face_anchor_geometry,
+            head_report["detected_frame_names"],
         )
         clean_report = execute_stage(
             "clean_geometry",
@@ -363,7 +456,8 @@ def main(argv: list[str] | None = None) -> int:
                 clean_geometry,
                 cleanup_config,
                 camera_to_world_matrices=load_camera_to_world_matrices(
-                    workspace / "transforms.json"
+                    workspace / "transforms.json",
+                    head_report["detected_frame_names"],
                 ),
                 orientation_path=face_anchor_geometry,
             ),

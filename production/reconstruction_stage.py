@@ -192,16 +192,25 @@ def required_reconstruction_outputs(config: ReconstructionConfig) -> list[Path]:
         / "point_cloud.ply",
         workspace / "2dgs_recon.obj",
         workspace / "transforms.json",
+        workspace / "refinement" / "sample" / "image",
+        workspace / "mask",
     ]
 
 
 def validate_reconstruction_outputs(config: ReconstructionConfig) -> dict:
-    missing = [path for path in required_reconstruction_outputs(config) if not path.is_file()]
-    selected = sorted((config.workspace_root / "refinement" / "sample" / "image").glob("*.png"))
+    outputs = required_reconstruction_outputs(config)
+    missing = [path for path in outputs[:3] if not path.is_file()]
+    selected = sorted(outputs[3].glob("*.png"))
     if missing:
         raise FileNotFoundError("Missing reconstruction outputs: " + ", ".join(map(str, missing)))
     if not selected:
         raise FileNotFoundError("Refinement did not select any texture frames")
+    missing_masks = [outputs[4] / frame.name for frame in selected if not (outputs[4] / frame.name).is_file()]
+    if missing_masks:
+        raise FileNotFoundError(
+            "Selected texture frames are missing masks: "
+            + ", ".join(map(str, missing_masks))
+        )
     return {
         "checkpoint_iteration": config.iterations,
         "mesh_res": config.mesh_res,
