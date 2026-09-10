@@ -6,7 +6,7 @@
 
 **Architecture:** A pinned ResNet18 BiSeNet ONNX model produces 19-class face-parsing maps for the selected reconstruction views. MediaPipe landmarks anchor the correct component and bound the neck; camera-matched rasterization maps the resulting masks back to `2dgs_recon.obj`, while a separate face-anchor mesh stabilizes canonical orientation. Existing xatlas UV, texture optimization, GLB export, validation, and reconstruction resume behavior stay in place.
 
-**Tech Stack:** Python 3.10, NumPy, OpenCV, MediaPipe, ONNX Runtime GPU, PyTorch3D, trimesh, scipy, xatlas, pytest
+**Tech Stack:** Python 3.10, NumPy, OpenCV, MediaPipe, ONNX Runtime CPU provider, PyTorch3D, trimesh, scipy, xatlas, pytest
 
 **Spec:** `docs/superpowers/specs/2026-09-10-full-head-pipeline-design.md`
 
@@ -18,7 +18,7 @@
 - Limit retained neck pixels to 0.45 face heights below the MediaPipe chin.
 - Do not synthesize an unobserved rear head surface.
 - Reuse the saved 30,000-iteration reconstruction for acceptance testing.
-- Run production inference on physical GPU 1, exposed inside the process as logical GPU 0.
+- Run reconstruction, rasterization, and texture inference on physical GPU 1, exposed inside the process as logical GPU 0; run the 16-frame ONNX parser on CPU.
 - Keep the 1024 by 1024 xatlas texture path and existing validation gates.
 - Do not commit model weights or runtime artifacts.
 
@@ -175,8 +175,8 @@ Expected: collection fails because `production.head_segmentation` does not exist
 - [ ] **Step 3: Implement deterministic mask construction**
 
 ```python
-HEAD_LABELS = frozenset({1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13})
-NECK_LABEL = 17
+HEAD_LABELS = frozenset({1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 17})
+NECK_LABEL = 14
 
 
 def build_head_mask(labels, landmarks, config=HeadMaskConfig()):
@@ -198,7 +198,7 @@ def build_head_mask(labels, landmarks, config=HeadMaskConfig()):
 ```
 
 Implement `OnnxFaceParser` with ImageNet RGB normalization, NCHW float32 input
-at 512 by 512, CUDA provider device 0 followed by CPU fallback, first-output
+at 512 by 512, the CPU provider, first-output
 argmax, and nearest-neighbor restoration to source size. The constructor calls
 `verify_model` before creating the inference session.
 

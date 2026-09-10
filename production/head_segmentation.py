@@ -53,9 +53,9 @@ FACE_OVAL_INDICES = np.array(
     dtype=np.int64,
 )
 
-HEAD_LABELS = frozenset({1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13})
-NECK_LABEL = 17
-EXCLUDED_LABELS = frozenset({3, 14, 15, 16, 18})
+HEAD_LABELS = frozenset({1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 17})
+NECK_LABEL = 14
+EXCLUDED_LABELS = frozenset({6, 9, 15, 16, 18})
 
 
 @dataclass(frozen=True)
@@ -228,10 +228,7 @@ class OnnxFaceParser:
     ) -> None:
         self.model_path = Path(model_path)
         self.model_sha256 = verify_model(self.model_path)
-        providers = [
-            ("CUDAExecutionProvider", {"device_id": 0}),
-            "CPUExecutionProvider",
-        ]
+        providers = ["CPUExecutionProvider"]
         self._session = session_factory(str(self.model_path), providers)
         self._input_name = self._session.get_inputs()[0].name
 

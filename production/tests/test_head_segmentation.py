@@ -24,12 +24,12 @@ def square_landmarks() -> np.ndarray:
 
 def test_head_mask_keeps_head_and_short_neck_but_excludes_accessories() -> None:
     labels = np.zeros((20, 20), dtype=np.uint8)
-    labels[3:8, 7:13] = 13
+    labels[3:8, 7:13] = 17
     labels[8:14, 6:14] = 1
-    labels[9:12, 5:6] = 8
-    labels[8:10, 8:12] = 3
-    labels[14:20, 8:12] = 17
-    labels[18:20, :] = 18
+    labels[9:12, 5:6] = 7
+    labels[8:10, 8:12] = 6
+    labels[14:20, 8:12] = 14
+    labels[18:20, :] = 16
 
     mask, report = build_head_mask(
         labels,
@@ -50,7 +50,7 @@ def test_head_mask_keeps_head_and_short_neck_but_excludes_accessories() -> None:
 def test_head_mask_limits_neck_to_jaw_width() -> None:
     labels = np.zeros((24, 30), dtype=np.uint8)
     labels[8:15, 6:15] = 1
-    labels[14:18, :] = 17
+    labels[14:18, :] = 14
 
     mask, _ = build_head_mask(
         labels,
@@ -66,7 +66,7 @@ def test_head_mask_limits_neck_to_jaw_width() -> None:
 def test_head_mask_keeps_component_with_largest_face_anchor_overlap() -> None:
     labels = np.zeros((24, 30), dtype=np.uint8)
     labels[8:15, 6:15] = 1
-    labels[2:7, 22:28] = 13
+    labels[2:7, 22:28] = 17
 
     mask, report = build_head_mask(
         labels,
@@ -81,7 +81,7 @@ def test_head_mask_keeps_component_with_largest_face_anchor_overlap() -> None:
 
 def test_head_mask_rejects_component_without_face_anchor() -> None:
     labels = np.zeros((24, 30), dtype=np.uint8)
-    labels[2:7, 22:28] = 13
+    labels[2:7, 22:28] = 17
 
     with pytest.raises(ValueError, match="face anchor"):
         build_head_mask(
@@ -130,7 +130,7 @@ class FakeSession:
     def run(self, output_names, inputs):
         self.batch = inputs["input"]
         logits = np.zeros((1, 19, 512, 512), dtype=np.float32)
-        logits[:, 13, :, 256:] = 1.0
+        logits[:, 17, :, 256:] = 1.0
         return [logits]
 
 
@@ -157,8 +157,7 @@ def test_onnx_face_parser_restores_source_resolution(
 
     assert labels.shape == (10, 20)
     assert np.all(labels[:, :10] == 0)
-    assert np.all(labels[:, 10:] == 13)
+    assert np.all(labels[:, 10:] == 17)
     assert fake_session.batch is not None
     assert fake_session.batch.shape == (1, 3, 512, 512)
-    assert providers[0][0] == "CUDAExecutionProvider"
-    assert providers[0][1]["device_id"] == 0
+    assert providers == ["CPUExecutionProvider"]

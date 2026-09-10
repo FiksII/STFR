@@ -15,7 +15,7 @@ HEAD. The existing `pipeline` branch remains unchanged.
 ## Selected Approach
 
 Use the ResNet18 BiSeNet face-parsing model trained on CelebAMask-HQ through the
-repository's existing GPU ONNX Runtime. Its 19 semantic classes distinguish
+repository's existing ONNX Runtime CPU provider. Its 19 semantic classes distinguish
 skin, facial features, ears, hair, neck, clothing, and accessories. MediaPipe
 Face Mesh remains in the pipeline as a face anchor: it selects the correct
 semantic component, bounds the neck crop, and provides stable geometry for
@@ -85,7 +85,11 @@ model hashes in resume state.
 `production/download_models.py` downloads the pinned ONNX checkpoint to the
 model cache and verifies its expected SHA-256 before it can be used. `AGENTS.md`
 documents model installation for a worker host. No new Python runtime dependency
-is required because `onnxruntime-gpu` is already pinned.
+is required because ONNX Runtime is already pinned. The CPU provider is
+intentional: the 16 production masks take about 1.1 seconds on the verified
+server, while avoiding a cuDNN 9 dependency that conflicts with the pipeline's
+PyTorch 2.3.1 and cuDNN 8 stack. Reconstruction, mesh rasterization, and texture
+optimization still use physical GPU 1.
 
 ## Failure Handling
 
