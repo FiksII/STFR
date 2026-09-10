@@ -166,3 +166,51 @@ def test_cleanup_applies_volume_preserving_taubin_smoothing(
 
     actual = trimesh.load_mesh(output_path, process=False)
     assert np.allclose(actual.vertices, expected.vertices, atol=1e-6)
+
+
+def test_cleanup_orients_full_head_from_separate_face_anchor(
+    tmp_path: Path,
+) -> None:
+    canonical_anchor = trimesh.creation.box(extents=(2.0, 4.0, 0.5))
+    rotation = trimesh.transformations.euler_matrix(0.2, -0.4, 0.3)[:3, :3]
+    translation = np.array([4.0, -3.0, 7.0])
+    canonical_anchor.vertices = canonical_anchor.vertices @ rotation.T + translation
+    head = trimesh.creation.icosphere(subdivisions=2, radius=3.0)
+    head.vertices = head.vertices @ rotation.T + translation
+    head_path = tmp_path / "head.ply"
+    anchor_path = tmp_path / "anchor.ply"
+    head.export(head_path)
+    canonical_anchor.export(anchor_path)
+
+    world_up = rotation[:, 1]
+    world_forward = rotation[:, 2]
+    cameras = []
+    for offset in (-0.5, 0.5):
+        transform = np.eye(4)
+        transform[:3, 1] = -world_up
+        transform[:3, 3] = (
+            translation + world_forward * 10.0 + rotation[:, 0] * offset
+        )
+        cameras.append(transform)
+    camera_array = np.asarray(cameras)
+    expected = canonical_face_transform(
+        np.asarray(canonical_anchor.vertices),
+        camera_array,
+        target_height=1.35,
+    )
+
+    report = clean_face_mesh(
+        head_path,
+        tmp_path / "clean.ply",
+        CleanupConfig(
+            smooth_iterations=0,
+            minimum_faces=10,
+            maximum_roughness_p90_degrees=180.0,
+        ),
+        camera_to_world_matrices=camera_array,
+        orientation_path=anchor_path,
+    )
+
+    assert report["canonicalization"] == "camera_pca_orientation_mesh"
+    assert report["orientation_vertices"] == len(canonical_anchor.vertices)
+    assert np.allclose(report["source_to_output_row_matrix"], expected)

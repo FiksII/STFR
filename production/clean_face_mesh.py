@@ -160,6 +160,7 @@ def clean_face_mesh(
     output_path: Path,
     config: CleanupConfig = CleanupConfig(),
     camera_to_world_matrices: np.ndarray | None = None,
+    orientation_path: Path | None = None,
 ) -> dict:
     config.validate()
     source = load_triangle_mesh(source_path)
@@ -201,16 +202,25 @@ def clean_face_mesh(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cleaned.export(output_path)
 
+    orientation_vertices = np.asarray(cleaned.vertices)
     if camera_to_world_matrices is None:
         source_to_output = SOURCE_TO_GLTF_Y_UP_ROW_MATRIX
         canonicalization = "fixed_gltf_y_up"
     else:
+        canonicalization = "camera_pca"
+        if orientation_path is not None:
+            orientation = load_triangle_mesh(Path(orientation_path))
+            orientation_vertices = np.asarray(orientation.vertices)
+            if not len(orientation_vertices) or not np.isfinite(
+                orientation_vertices
+            ).all():
+                raise ValueError("Orientation mesh must contain finite vertices")
+            canonicalization = "camera_pca_orientation_mesh"
         source_to_output = canonical_face_transform(
-            np.asarray(cleaned.vertices),
+            orientation_vertices,
             camera_to_world_matrices,
             config.target_face_height,
         )
-        canonicalization = "camera_pca"
 
     return {
         "config": asdict(config),
@@ -223,6 +233,7 @@ def clean_face_mesh(
         "output_vertices": int(len(cleaned.vertices)),
         "output_faces": int(len(cleaned.faces)),
         "canonicalization": canonicalization,
+        "orientation_vertices": int(len(orientation_vertices)),
         "source_to_output_row_matrix": source_to_output.tolist(),
         "smooth_displacement_mean": float(displacement.mean()),
         "smooth_displacement_p95": float(np.quantile(displacement, 0.95)),
