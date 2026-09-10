@@ -231,6 +231,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--head-neck-height-ratio", type=float, default=0.45)
     parser.add_argument("--head-maximum-hole-faces", type=int, default=1000)
     parser.add_argument("--head-opening-rings", type=int, default=3)
+    parser.add_argument(
+        "--head-maximum-boundary-hole-extent",
+        type=float,
+        default=0.18,
+    )
     parser.add_argument("--smooth-iterations", type=int, default=3)
     parser.add_argument("--texture-iterations", type=int, default=301)
     parser.add_argument("--lpips-max-size", type=int, default=512)
@@ -260,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     cleanup_config = CleanupConfig(
         smooth_iterations=args.smooth_iterations,
+        maximum_boundary_hole_extent=args.head_maximum_boundary_hole_extent,
     )
     head_crop_config = HeadCropConfig(
         mask=HeadMaskConfig(neck_height_ratio=args.head_neck_height_ratio),

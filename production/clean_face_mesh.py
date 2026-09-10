@@ -21,6 +21,7 @@ SOURCE_TO_GLTF_Y_UP_ROW_MATRIX = np.diag([-1.0, -1.0, 1.0, 1.0])
 class CleanupConfig:
     smooth_iterations: int = 3
     target_face_height: float = 1.35
+    maximum_boundary_hole_extent: float = 0.18
     minimum_faces: int = 1000
     minimum_largest_component_fraction: float = 0.5
     maximum_roughness_p90_degrees: float = 30.0
@@ -31,6 +32,8 @@ class CleanupConfig:
             raise ValueError("Smooth iterations cannot be negative")
         if self.target_face_height <= 0:
             raise ValueError("Target face height must be positive")
+        if self.maximum_boundary_hole_extent < 0:
+            raise ValueError("Maximum boundary hole extent cannot be negative")
         if self.minimum_faces < 1:
             raise ValueError("Minimum face count must be positive")
         if not 0 < self.minimum_largest_component_fraction <= 1:
@@ -155,6 +158,121 @@ def largest_face_component(
     return largest, sorted(counts.astype(int).tolist(), reverse=True)
 
 
+def fill_small_boundary_loops(
+    mesh: trimesh.Trimesh,
+    source_to_output: np.ndarray,
+    maximum_extent: float,
+) -> tuple[trimesh.Trimesh, dict[str, int | float]]:
+    if maximum_extent < 0:
+        raise ValueError("Maximum boundary hole extent cannot be negative")
+    matrix = np.asarray(source_to_output, dtype=np.float64)
+    if matrix.shape != (4, 4):
+        raise ValueError("Source-to-output transform must be 4x4")
+
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    directed_edges = np.vstack(
+        (
+            faces[:, [0, 1]],
+            faces[:, [1, 2]],
+            faces[:, [2, 0]],
+        )
+    )
+    undirected_edges = np.sort(directed_edges, axis=1)
+    _, inverse, counts = np.unique(
+        undirected_edges,
+        axis=0,
+        return_inverse=True,
+        return_counts=True,
+    )
+    boundary_edges = directed_edges[counts[inverse] == 1]
+    empty_report = {
+        "maximum_extent": float(maximum_extent),
+        "boundary_components": 0,
+        "closed_components": 0,
+        "filled_components": 0,
+        "filled_faces": 0,
+    }
+    if not len(boundary_edges):
+        return mesh.copy(), empty_report
+
+    graph = coo_matrix(
+        (
+            np.ones(len(boundary_edges) * 2, dtype=np.uint8),
+            (
+                np.concatenate((boundary_edges[:, 0], boundary_edges[:, 1])),
+                np.concatenate((boundary_edges[:, 1], boundary_edges[:, 0])),
+            ),
+        ),
+        shape=(len(mesh.vertices), len(mesh.vertices)),
+    ).tocsr()
+    _, labels = connected_components(graph, directed=False)
+    boundary_vertices = np.unique(boundary_edges)
+    component_labels = np.unique(labels[boundary_vertices])
+    canonical_vertices = transform_points(np.asarray(mesh.vertices), matrix)
+
+    added_vertices: list[np.ndarray] = []
+    added_colors: list[np.ndarray] = []
+    added_faces: list[np.ndarray] = []
+    source_colors = np.asarray(mesh.visual.vertex_colors)
+    preserve_colors = len(source_colors) == len(mesh.vertices)
+    closed_components = 0
+    filled_components = 0
+    filled_faces = 0
+    for label in component_labels:
+        component_edges = boundary_edges[labels[boundary_edges[:, 0]] == label]
+        component_vertices, degrees = np.unique(component_edges, return_counts=True)
+        if len(component_edges) != len(component_vertices) or not np.all(degrees == 2):
+            continue
+        closed_components += 1
+        extent = np.ptp(canonical_vertices[component_vertices], axis=0)
+        if float(extent.max()) > maximum_extent:
+            continue
+
+        center_id = len(mesh.vertices) + len(added_vertices)
+        added_vertices.append(np.asarray(mesh.vertices)[component_vertices].mean(axis=0))
+        if preserve_colors:
+            added_colors.append(source_colors[component_vertices].mean(axis=0))
+        added_faces.append(
+            np.column_stack(
+                (
+                    component_edges[:, 1],
+                    component_edges[:, 0],
+                    np.full(len(component_edges), center_id, dtype=np.int64),
+                )
+            )
+        )
+        filled_components += 1
+        filled_faces += len(component_edges)
+
+    if not added_vertices:
+        output = mesh.copy()
+    else:
+        output_vertices = np.vstack(
+            (np.asarray(mesh.vertices), np.asarray(added_vertices))
+        )
+        output_faces = np.vstack([faces, *added_faces])
+        output_colors = None
+        if preserve_colors:
+            output_colors = np.vstack(
+                (source_colors, np.asarray(added_colors))
+            ).astype(source_colors.dtype)
+        output = trimesh.Trimesh(
+            vertices=output_vertices,
+            faces=output_faces,
+            vertex_colors=output_colors,
+            process=False,
+            maintain_order=True,
+        )
+
+    return output, {
+        "maximum_extent": float(maximum_extent),
+        "boundary_components": int(len(component_labels)),
+        "closed_components": int(closed_components),
+        "filled_components": int(filled_components),
+        "filled_faces": int(filled_faces),
+    }
+
+
 def clean_face_mesh(
     source_path: Path,
     output_path: Path,
@@ -191,17 +309,6 @@ def clean_face_mesh(
         )
 
     displacement = np.linalg.norm(cleaned.vertices - before_smoothing, axis=1)
-    roughness = roughness_percentiles(cleaned)
-    if roughness["p90"] > config.maximum_roughness_p90_degrees:
-        raise ValueError(
-            f"Mesh roughness p90 {roughness['p90']:.2f} degrees exceeds "
-            f"{config.maximum_roughness_p90_degrees:.2f}"
-        )
-
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    cleaned.export(output_path)
-
     orientation_vertices = np.asarray(cleaned.vertices)
     if camera_to_world_matrices is None:
         source_to_output = SOURCE_TO_GLTF_Y_UP_ROW_MATRIX
@@ -222,6 +329,22 @@ def clean_face_mesh(
             config.target_face_height,
         )
 
+    cleaned, boundary_hole_report = fill_small_boundary_loops(
+        cleaned,
+        source_to_output,
+        config.maximum_boundary_hole_extent,
+    )
+    roughness = roughness_percentiles(cleaned)
+    if roughness["p90"] > config.maximum_roughness_p90_degrees:
+        raise ValueError(
+            f"Mesh roughness p90 {roughness['p90']:.2f} degrees exceeds "
+            f"{config.maximum_roughness_p90_degrees:.2f}"
+        )
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cleaned.export(output_path)
+
     return {
         "config": asdict(config),
         "source_vertices": int(len(source.vertices)),
@@ -234,6 +357,7 @@ def clean_face_mesh(
         "output_faces": int(len(cleaned.faces)),
         "canonicalization": canonicalization,
         "orientation_vertices": int(len(orientation_vertices)),
+        "boundary_holes": boundary_hole_report,
         "source_to_output_row_matrix": source_to_output.tolist(),
         "smooth_displacement_mean": float(displacement.mean()),
         "smooth_displacement_p95": float(np.quantile(displacement, 0.95)),

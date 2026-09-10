@@ -145,7 +145,9 @@ canonical orientation and scale. The crop fills only small unselected components
 (up to 1000 triangles by default), then applies a three-ring topology opening to
 remove narrow boundary protrusions without growing the selected region. It then
 uses non-overlapping xatlas UV islands for texture optimization. `xatlas==0.0.11`
-is installed by the frozen uv environment. Texture training bounds only the LPIPS
+is installed by the frozen uv environment. Closed boundary loops no larger than
+0.18 canonical units are patched before UV unwrapping; the larger open neck and
+unobserved rear boundary remain untouched. Texture training bounds only the LPIPS
 input to a 512-pixel long edge; its UV output and geometry-aware L1 loss remain
 full-resolution. Export uses the facial anchor and COLMAP camera poses to center
 the head, scale it to a 1.35-unit facial-anchor height, point it toward positive Z,

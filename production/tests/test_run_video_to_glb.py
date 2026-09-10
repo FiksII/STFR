@@ -182,6 +182,7 @@ def test_head_crop_cli_defaults_are_production_values(tmp_path: Path) -> None:
     assert args.head_neck_height_ratio == 0.45
     assert args.head_maximum_hole_faces == 1000
     assert args.head_opening_rings == 3
+    assert args.head_maximum_boundary_hole_extent == 0.18
     assert args.head_parsing_model.name == "face-parsing-resnet18.onnx"
 
 

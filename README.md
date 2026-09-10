@@ -21,7 +21,8 @@ The production defaults use the full 30,000-iteration 2DGS reconstruction, mesh
 resolution 1024, BiSeNet/CelebAMask semantic head cropping in reconstructed
 coordinates, bounded filling of missed internal regions, a three-ring topology
 opening that removes narrow boundary protrusions, three low-displacement Taubin
-smoothing passes, non-overlapping xatlas UV islands, and 301 texture iterations.
+smoothing passes, bounded repair of small closed surface holes, non-overlapping
+xatlas UV islands, and 301 texture iterations.
 The crop retains the observed face, hair, ears, and a short neck while excluding
 clothing and shoulders. MediaPipe landmarks produce a separate facial anchor used
 only for canonical orientation and scale. The production entry point does not run

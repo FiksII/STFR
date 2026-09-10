@@ -9,6 +9,7 @@ from production.clean_face_mesh import (
     CleanupConfig,
     canonical_face_transform,
     clean_face_mesh,
+    fill_small_boundary_loops,
     transform_points,
 )
 
@@ -17,6 +18,53 @@ def test_cleanup_defaults_to_three_taubin_passes() -> None:
     assert CleanupConfig().smooth_iterations == 3
     assert CleanupConfig().output_orientation == "gltf_y_up"
     assert CleanupConfig().target_face_height == 1.35
+    assert CleanupConfig().maximum_boundary_hole_extent == 0.18
+
+
+def test_fill_small_boundary_loops_closes_small_hole_not_outer_boundary() -> None:
+    vertices = np.array(
+        [
+            [-1.0, -1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [-1.0, 1.0, 0.0],
+            [-0.1, -0.1, 0.0],
+            [0.1, -0.1, 0.0],
+            [0.1, 0.1, 0.0],
+            [-0.1, 0.1, 0.0],
+        ]
+    )
+    faces = np.array(
+        [
+            [0, 1, 4],
+            [1, 5, 4],
+            [1, 2, 5],
+            [2, 6, 5],
+            [2, 3, 6],
+            [3, 7, 6],
+            [3, 0, 7],
+            [0, 4, 7],
+        ]
+    )
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+
+    filled, report = fill_small_boundary_loops(
+        mesh,
+        source_to_output=np.eye(4),
+        maximum_extent=0.25,
+    )
+
+    assert len(filled.vertices) == len(mesh.vertices) + 1
+    assert len(filled.faces) == len(mesh.faces) + 4
+    assert report["boundary_components"] == 2
+    assert report["filled_components"] == 1
+    assert report["filled_faces"] == 4
+    boundary_edges = trimesh.grouping.group_rows(
+        np.sort(np.asarray(filled.edges), axis=1),
+        require_count=1,
+    )
+    remaining_boundary = np.asarray(filled.edges)[boundary_edges]
+    assert set(np.unique(remaining_boundary)) == {0, 1, 2, 3}
 
 
 def test_camera_canonical_transform_centers_scales_and_orients_face() -> None:
