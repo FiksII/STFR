@@ -137,26 +137,42 @@ ldd "$(command -v colmap)" | grep -E 'cuda|cudart'
 ## Production external assets
 
 Faceform Wrap is not required by the production video-to-GLB entry point. The
-production path uses MediaPipe face landmarks and the COLMAP cameras to retain
-visible facial triangles from `2dgs_recon.obj`. It fills only small unselected
-face components (up to 1000 triangles by default) before keeping the largest
-connected crop, preventing rasterization pinholes without expanding into the
-background. A 10-ring topology opening removes thin boundary protrusions without
-growing the selected region. It then uses non-overlapping xatlas UV islands for texture
-optimization. `xatlas==0.0.11` is installed by the frozen uv
-environment. Texture training bounds only the LPIPS input to a 512-pixel long
-edge; its UV output and geometry-aware L1 loss remain full-resolution. Export
-uses the facial surface plane and COLMAP camera poses to center the face, scale it
-to a 1.35-unit height, point it toward positive Z, and preserve a right-handed
-glTF Y-up coordinate system. The upstream registration scripts remain in the
-repository only as a legacy research workflow.
+production path uses a pinned BiSeNet/CelebAMask ONNX parser and the COLMAP cameras
+to retain observed head triangles from `2dgs_recon.obj`: face, hair, ears, and a
+short neck are included, while clothing, shoulders, hats, jewelry, and glasses are
+excluded. MediaPipe landmarks generate a separate facial-anchor mesh used only for
+canonical orientation and scale. The crop fills only small unselected components
+(up to 1000 triangles by default), then applies a three-ring topology opening to
+remove narrow boundary protrusions without growing the selected region. It then
+uses non-overlapping xatlas UV islands for texture optimization. `xatlas==0.0.11`
+is installed by the frozen uv environment. Texture training bounds only the LPIPS
+input to a 512-pixel long edge; its UV output and geometry-aware L1 loss remain
+full-resolution. Export uses the facial anchor and COLMAP camera poses to center
+the head, scale it to a 1.35-unit facial-anchor height, point it toward positive Z,
+and preserve a right-handed glTF Y-up coordinate system. The upstream registration
+scripts remain in the repository only as a legacy research workflow.
 
-The following large model is intentionally excluded from Git and must be
+The following large models are intentionally excluded from Git and must be
 provisioned separately:
 
 ```text
 matting/model/foreground-segmentation-model-vitl16_384.onnx
+models/face-parsing-resnet18.onnx
 ```
+
+Install and verify the pinned face parser with:
+
+```bash
+uv run python -m production.download_models \
+  --output models/face-parsing-resnet18.onnx
+```
+
+The expected SHA256 is
+`0d9bd318e46987c3bdbfacae9e2c0f461cae1c6ac6ea6d43bbe541a91727e33f`.
+The parser uses ONNX Runtime's CPU provider intentionally: ONNX Runtime 1.22 CUDA
+expects cuDNN 9, while the frozen PyTorch 2.3.1/CUDA 12.1 environment contains
+cuDNN 8.9.2. Parsing the normal 16-view set takes about 1.1 seconds on the verified
+server, so keeping this small step on CPU avoids changing the working CUDA stack.
 
 Official references:
 

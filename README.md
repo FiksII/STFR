@@ -6,25 +6,32 @@ The worker-facing entry point accepts one video and publishes one validated GLB:
 
 ```bash
 CUDA_HOME=/usr TORCH_CUDA_ARCH_LIST=8.6 uv sync --frozen --no-dev
+uv run python -m production.download_models \
+  --output models/face-parsing-resnet18.onnx
 uv run python -m production.run_video_to_glb \
   --video /input/capture.mov \
   --job-root /jobs/123 \
-  --output /jobs/123/result/face.glb \
+  --output /jobs/123/result/head.glb \
+  --head-parsing-model models/face-parsing-resnet18.onnx \
   --physical-gpu 1 \
   --lpips-max-size 512
 ```
 
 The production defaults use the full 30,000-iteration 2DGS reconstruction, mesh
-resolution 1024, MediaPipe-guided visible-face cropping in reconstructed
-coordinates, bounded filling of missed internal face regions, a topology opening
-that removes narrow boundary protrusions, three low-displacement Taubin smoothing
-passes, non-overlapping xatlas UV islands, and 301 texture iterations. The
-production entry point does
-not run FLAME registration or Faceform Wrap. LPIPS is evaluated at a bounded
-512-pixel long edge while the UV texture and geometry-aware L1 loss remain at full
-resolution. The final asset is centered, scaled to a 1.35-unit face height, and
-oriented into glTF Y-up coordinates from the COLMAP camera poses and facial
-surface plane. Add `--resume`
+resolution 1024, BiSeNet/CelebAMask semantic head cropping in reconstructed
+coordinates, bounded filling of missed internal regions, a three-ring topology
+opening that removes narrow boundary protrusions, three low-displacement Taubin
+smoothing passes, non-overlapping xatlas UV islands, and 301 texture iterations.
+The crop retains the observed face, hair, ears, and a short neck while excluding
+clothing and shoulders. MediaPipe landmarks produce a separate facial anchor used
+only for canonical orientation and scale. The production entry point does not run
+FLAME registration or Faceform Wrap. The ONNX face parser deliberately runs on CPU
+(about 1.1 seconds for the usual 16 selected views) to avoid a cuDNN 9 requirement;
+reconstruction, rasterization, and texture optimization stay on the selected GPU.
+LPIPS is evaluated at a bounded 512-pixel long edge while the UV texture and
+geometry-aware L1 loss remain at full resolution. The final asset is centered,
+scaled to a 1.35-unit facial-anchor height, and oriented into glTF Y-up coordinates
+from the COLMAP camera poses and facial surface plane. Add `--resume`
 to reuse stages whose configuration, input hashes, and recorded outputs still
 match. Use `--dry-run` to print the complete JSON stage plan without touching the
 filesystem or CUDA.

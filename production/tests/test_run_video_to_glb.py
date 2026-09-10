@@ -7,20 +7,21 @@ import production.run_video_to_glb as pipeline
 from production.run_video_to_glb import (
     PIPELINE_STAGES,
     build_clean_resume_config,
-    build_face_crop_resume_config,
+    build_head_crop_resume_config,
     build_texture_resume_config,
     main,
+    parse_args,
     publish_validated_glb,
 )
-from production.face_crop_stage import FaceCropConfig
+from production.head_crop_stage import HeadCropConfig
 from production.clean_face_mesh import CleanupConfig
 from production.texture_stage import TextureConfig
 
 
-def test_pipeline_crops_direct_2dgs_mesh_without_canonical_registration() -> None:
+def test_pipeline_crops_observed_head_from_direct_2dgs_mesh() -> None:
     assert PIPELINE_STAGES == (
         "reconstruction",
-        "face_crop",
+        "head_crop",
         "clean_geometry",
         "texture",
         "asset_export",
@@ -115,44 +116,73 @@ def test_texture_resume_fingerprint_changes_with_same_size_mesh_content(
 
 
 def test_clean_resume_fingerprint_tracks_mesh_cameras_and_code(tmp_path: Path) -> None:
-    mesh = tmp_path / "face-crop.ply"
+    mesh = tmp_path / "head-crop.ply"
+    anchor = tmp_path / "face-anchor.ply"
     transforms = tmp_path / "transforms.json"
     mesh.write_bytes(b"mesh-a")
+    anchor.write_bytes(b"anchor-a")
     transforms.write_bytes(b"cameras-a")
 
-    first = build_clean_resume_config(CleanupConfig(), mesh, transforms)
+    first = build_clean_resume_config(CleanupConfig(), mesh, transforms, anchor)
+    anchor.write_bytes(b"anchor-b")
+    second = build_clean_resume_config(CleanupConfig(), mesh, transforms, anchor)
     transforms.write_bytes(b"cameras-b")
-    second = build_clean_resume_config(CleanupConfig(), mesh, transforms)
+    third = build_clean_resume_config(CleanupConfig(), mesh, transforms, anchor)
 
     assert len(first["cleanup_code_sha256"]) == 64
     assert first["target_face_height"] == 1.35
-    assert first["transforms_sha256"] != second["transforms_sha256"]
+    assert first["orientation_mesh_sha256"] != second["orientation_mesh_sha256"]
+    assert second["transforms_sha256"] != third["transforms_sha256"]
 
 
-def test_face_crop_resume_fingerprint_tracks_mesh_cameras_and_frames(
+def test_head_crop_resume_fingerprint_tracks_model_mesh_cameras_and_frames(
     tmp_path: Path,
 ) -> None:
     mesh = tmp_path / "2dgs_recon.obj"
     transforms = tmp_path / "transforms.json"
+    model = tmp_path / "face-parser.onnx"
     frames = tmp_path / "frames"
     frames.mkdir()
     frame = frames / "00001.png"
     mesh.write_bytes(b"mesh-a")
     transforms.write_bytes(b"cameras-a")
+    model.write_bytes(b"model-a")
     frame.write_bytes(b"frame-a")
-    config = FaceCropConfig()
+    config = HeadCropConfig()
 
-    first = build_face_crop_resume_config(config, mesh, transforms, frames)
+    first = build_head_crop_resume_config(config, mesh, transforms, frames, model)
     frame.write_bytes(b"frame-b")
-    second = build_face_crop_resume_config(config, mesh, transforms, frames)
+    second = build_head_crop_resume_config(config, mesh, transforms, frames, model)
     transforms.write_bytes(b"cameras-b")
-    third = build_face_crop_resume_config(config, mesh, transforms, frames)
+    third = build_head_crop_resume_config(config, mesh, transforms, frames, model)
+    model.write_bytes(b"model-b")
+    fourth = build_head_crop_resume_config(config, mesh, transforms, frames, model)
 
     assert first["uv_input"] == second["uv_input"] == "visible_2dgs_faces"
     assert len(first["crop_code_sha256"]) == 64
+    assert len(first["segmentation_code_sha256"]) == 64
     assert len(first["renderer_code_sha256"]) == 64
     assert first["selected_frames"] != second["selected_frames"]
     assert second["transforms_sha256"] != third["transforms_sha256"]
+    assert third["model_sha256"] != fourth["model_sha256"]
+
+
+def test_head_crop_cli_defaults_are_production_values(tmp_path: Path) -> None:
+    args = parse_args(
+        [
+            "--video",
+            str(tmp_path / "input.mov"),
+            "--job-root",
+            str(tmp_path / "job"),
+            "--output",
+            str(tmp_path / "head.glb"),
+        ]
+    )
+
+    assert args.head_neck_height_ratio == 0.45
+    assert args.head_maximum_hole_faces == 1000
+    assert args.head_opening_rings == 3
+    assert args.head_parsing_model.name == "face-parsing-resnet18.onnx"
 
 
 def test_asset_export_fingerprint_tracks_same_size_texture_changes(
@@ -170,6 +200,7 @@ def test_asset_export_fingerprint_tracks_same_size_texture_changes(
     texture.write_bytes(b"bbbb")
     second = pipeline.build_asset_export_resume_config(report, np.eye(4))
 
+    assert first["stem"] == second["stem"] == "head"
     assert first["texture_sha256"] != second["texture_sha256"]
 
 

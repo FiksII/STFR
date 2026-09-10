@@ -19,7 +19,9 @@ from production.clean_face_mesh import (
     load_camera_to_world_matrices,
 )
 from production.export_glb import export_canonical_asset
-from production.face_crop_stage import FaceCropConfig, crop_face_mesh
+from production.head_crop_stage import HeadCropConfig, crop_head_mesh
+from production.head_segmentation import HeadMaskConfig
+from production.model_assets import FACE_PARSING_MODEL
 from production.reconstruction_stage import (
     ReconstructionConfig,
     build_reconstruction_commands,
@@ -34,7 +36,7 @@ from production.validate_asset import validate_asset
 
 PIPELINE_STAGES = (
     "reconstruction",
-    "face_crop",
+    "head_crop",
     "clean_geometry",
     "texture",
     "asset_export",
@@ -76,11 +78,12 @@ def build_texture_resume_config(config: TextureConfig) -> dict:
     return payload
 
 
-def build_face_crop_resume_config(
-    config: FaceCropConfig,
+def build_head_crop_resume_config(
+    config: HeadCropConfig,
     source_mesh: Path,
     transforms_path: Path,
     selected_frames_root: Path,
+    model_path: Path,
 ) -> dict:
     selected_frames = sorted(Path(selected_frames_root).glob("*.png"))
     code_root = Path(__file__).resolve().parents[1]
@@ -88,13 +91,17 @@ def build_face_crop_resume_config(
         **asdict(config),
         "uv_input": "visible_2dgs_faces",
         "crop_code_sha256": file_sha256(
-            code_root / "production" / "face_crop_stage.py"
+            code_root / "production" / "head_crop_stage.py"
+        ),
+        "segmentation_code_sha256": file_sha256(
+            code_root / "production" / "head_segmentation.py"
         ),
         "renderer_code_sha256": file_sha256(
             code_root / "texture" / "mesh_renderer.py"
         ),
         "source_mesh_sha256": file_sha256(Path(source_mesh)),
         "transforms_sha256": file_sha256(Path(transforms_path)),
+        "model_sha256": file_sha256(Path(model_path)),
         "selected_frames": [
             {"name": frame.name, "sha256": file_sha256(frame)}
             for frame in selected_frames
@@ -106,11 +113,13 @@ def build_clean_resume_config(
     config: CleanupConfig,
     source_mesh: Path,
     transforms_path: Path,
+    orientation_mesh: Path,
 ) -> dict:
     code_root = Path(__file__).resolve().parents[1]
     return {
         **asdict(config),
         "source_mesh_sha256": file_sha256(Path(source_mesh)),
+        "orientation_mesh_sha256": file_sha256(Path(orientation_mesh)),
         "transforms_sha256": file_sha256(Path(transforms_path)),
         "cleanup_code_sha256": file_sha256(
             code_root / "production" / "clean_face_mesh.py"
@@ -124,7 +133,7 @@ def build_asset_export_resume_config(
 ) -> dict:
     return {
         "matrix": np.asarray(matrix, dtype=np.float64).tolist(),
-        "stem": "face",
+        "stem": "head",
         "source_obj_sha256": file_sha256(Path(texture_report["obj"])),
         "source_mtl_sha256": file_sha256(Path(texture_report["mtl"])),
         "texture_sha256": file_sha256(Path(texture_report["texture"])),
@@ -199,7 +208,7 @@ def execute_stage(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build one validated textured GLB face from one video."
+        description="Build one validated textured GLB head from one video."
     )
     parser.add_argument("--video", type=Path, required=True)
     parser.add_argument("--job-root", type=Path, required=True)
@@ -210,10 +219,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--video-step-size", type=int, default=10)
     parser.add_argument("--video-ds-ratio", type=float, default=0.5)
     parser.add_argument("--mesh-res", type=int, default=1024)
-    parser.add_argument("--face-oval-scale", type=float, default=1.0)
-    parser.add_argument("--face-adjacency-rings", type=int, default=0)
-    parser.add_argument("--face-maximum-hole-faces", type=int, default=1000)
-    parser.add_argument("--face-opening-rings", type=int, default=10)
+    parser.add_argument(
+        "--head-parsing-model",
+        type=Path,
+        default=(
+            Path(__file__).resolve().parents[1]
+            / "models"
+            / FACE_PARSING_MODEL.filename
+        ),
+    )
+    parser.add_argument("--head-neck-height-ratio", type=float, default=0.45)
+    parser.add_argument("--head-maximum-hole-faces", type=int, default=1000)
+    parser.add_argument("--head-opening-rings", type=int, default=3)
     parser.add_argument("--smooth-iterations", type=int, default=3)
     parser.add_argument("--texture-iterations", type=int, default=301)
     parser.add_argument("--lpips-max-size", type=int, default=512)
@@ -228,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     video = args.video.resolve()
     job_root = args.job_root.resolve()
     output = args.output.resolve()
+    head_parsing_model = args.head_parsing_model.resolve()
     workspace = job_root / "workspace"
     artifacts = job_root / "artifacts"
     reconstruction_config = ReconstructionConfig(
@@ -243,11 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     cleanup_config = CleanupConfig(
         smooth_iterations=args.smooth_iterations,
     )
-    face_crop_config = FaceCropConfig(
-        oval_scale=args.face_oval_scale,
-        adjacency_rings=args.face_adjacency_rings,
-        maximum_hole_faces=args.face_maximum_hole_faces,
-        opening_rings=args.face_opening_rings,
+    head_crop_config = HeadCropConfig(
+        mask=HeadMaskConfig(neck_height_ratio=args.head_neck_height_ratio),
+        maximum_hole_faces=args.head_maximum_hole_faces,
+        opening_rings=args.head_opening_rings,
     )
 
     if args.dry_run:
@@ -291,37 +308,44 @@ def main(argv: list[str] | None = None) -> int:
             args.resume,
         )
 
-        face_crop_geometry = artifacts / "face_crop.ply"
-        face_crop_report_path = artifacts / "face-crop-report.json"
-        face_crop_resume_config = build_face_crop_resume_config(
-            face_crop_config,
+        head_crop_geometry = artifacts / "head_crop.ply"
+        face_anchor_geometry = artifacts / "face_anchor.ply"
+        head_mask_diagnostics = artifacts / "head_masks"
+        head_crop_report_path = artifacts / "head-crop-report.json"
+        head_crop_resume_config = build_head_crop_resume_config(
+            head_crop_config,
             workspace / "2dgs_recon.obj",
             workspace / "transforms.json",
             workspace / "refinement" / "sample" / "image",
+            head_parsing_model,
         )
         execute_stage(
-            "face_crop",
-            face_crop_resume_config,
-            (face_crop_geometry,),
-            face_crop_report_path,
-            lambda: crop_face_mesh(
+            "head_crop",
+            head_crop_resume_config,
+            (head_crop_geometry, face_anchor_geometry),
+            head_crop_report_path,
+            lambda: crop_head_mesh(
                 source_path=workspace / "2dgs_recon.obj",
                 selected_frames_root=workspace / "refinement" / "sample" / "image",
                 transforms_path=workspace / "transforms.json",
-                output_path=face_crop_geometry,
-                config=face_crop_config,
+                output_path=head_crop_geometry,
+                face_anchor_path=face_anchor_geometry,
+                diagnostics_root=head_mask_diagnostics,
+                model_path=head_parsing_model,
+                config=head_crop_config,
                 device="cuda:0",
             ),
             state,
             args.resume,
         )
 
-        clean_geometry = artifacts / "face_geometry.ply"
+        clean_geometry = artifacts / "head_geometry.ply"
         clean_report_path = artifacts / "geometry-report.json"
         clean_resume_config = build_clean_resume_config(
             cleanup_config,
-            face_crop_geometry,
+            head_crop_geometry,
             workspace / "transforms.json",
+            face_anchor_geometry,
         )
         clean_report = execute_stage(
             "clean_geometry",
@@ -329,12 +353,13 @@ def main(argv: list[str] | None = None) -> int:
             (clean_geometry,),
             clean_report_path,
             lambda: clean_face_mesh(
-                face_crop_geometry,
+                head_crop_geometry,
                 clean_geometry,
                 cleanup_config,
                 camera_to_world_matrices=load_camera_to_world_matrices(
                     workspace / "transforms.json"
                 ),
+                orientation_path=face_anchor_geometry,
             ),
             state,
             args.resume,
@@ -375,11 +400,11 @@ def main(argv: list[str] | None = None) -> int:
             "asset_export",
             export_config,
             (
-                export_root / "face.obj",
-                export_root / "face.mtl",
+                export_root / "head.obj",
+                export_root / "head.mtl",
                 export_root / "uv.png",
-                export_root / "face.glb",
-                export_root / "face_vertex_colors.ply",
+                export_root / "head.glb",
+                export_root / "head_vertex_colors.ply",
             ),
             export_report_path,
             lambda: export_canonical_asset(
@@ -388,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
                 Path(texture_report["texture"]),
                 np.asarray(clean_report["source_to_output_row_matrix"], dtype=np.float64),
                 export_root,
+                stem="head",
             ),
             state,
             args.resume,
